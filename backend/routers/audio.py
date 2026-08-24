@@ -1,9 +1,11 @@
 # -*- coding: UTF-8 -*-
 from fastapi import APIRouter
+import base64
 import hashlib
 import json
 import uuid
 import requests
+from openai import OpenAI
 from throttled import Throttled, per_sec, MemoryStore
 
 from constants import VolcengineASRResponseStatusCode, AsrTaskStatus
@@ -17,6 +19,53 @@ from utils.s3 import generate_download_url
 router = APIRouter(prefix="/audio", tags=["Audio"])
 logger = get_logger(__name__)
 STORE = MemoryStore()
+GEMINI_ASR_TASKS = {}
+
+
+def volcengine_asr_is_configured():
+    values = [env.AUC_APP_ID, env.AUC_ACCESS_TOKEN, env.AUC_CLUSTER_ID]
+    return all(values) and not any(str(value).startswith("your-") for value in values)
+
+
+def create_gemini_transcription_task(filename):
+    """Transcribe the uploaded MP3 through Gemini when Volcengine ASR is unavailable."""
+    if not all([env.GEMINI_BASE_URL, env.GEMINI_API_KEY, env.GEMINI_MODEL_ID]):
+        raise ExternalServiceException(
+            "Gemini ASR",
+            "Configure GEMINI_API_KEY and GEMINI_MODEL_ID before using Gemini transcription",
+        )
+
+    download_url = generate_download_url(filename)
+    audio_response = requests.get(download_url, timeout=120)
+    audio_response.raise_for_status()
+    audio_data = base64.b64encode(audio_response.content).decode("ascii")
+
+    response = OpenAI(
+        base_url=env.GEMINI_BASE_URL,
+        api_key=env.GEMINI_API_KEY,
+    ).chat.completions.create(
+        model=env.GEMINI_MODEL_ID,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Transcribe this audio accurately. Return only the spoken text.",
+                    },
+                    {
+                        "type": "input_audio",
+                        "input_audio": {"data": audio_data, "format": "mp3"},
+                    },
+                ],
+            }
+        ],
+        timeout=120,
+    )
+    text = response.choices[0].message.content or ""
+    task_id = f"gemini-{uuid.uuid4()}"
+    GEMINI_ASR_TASKS[task_id] = text
+    return task_id
 
 
 def generate_local_uuid():
@@ -36,6 +85,13 @@ async def create_transcription_task(request: FileNameRequest):
     logger.info(f"Creating transcription task for file: {request.filename}")
 
     try:
+        if not volcengine_asr_is_configured():
+            task_id = create_gemini_transcription_task(request.filename)
+            return success_response(
+                data={"task_id": task_id},
+                message="Gemini transcription task created successfully",
+            )
+
         submit_url = "https://openspeech.bytedance.com/api/v1/auc/submit"
         download_url = generate_download_url(request.filename)
 
@@ -95,6 +151,21 @@ async def get_transcription_task(task_id: str):
     logger.info(f"Querying transcription task status: {task_id}")
 
     try:
+        if task_id in GEMINI_ASR_TASKS:
+            return success_response(
+                data={
+                    "status": AsrTaskStatus.FINISHED.value,
+                    "result": [
+                        {
+                            "start_time": 0,
+                            "end_time": 0,
+                            "text": GEMINI_ASR_TASKS[task_id],
+                        }
+                    ],
+                },
+                message="Gemini transcription completed",
+            )
+
         data = {
             "appid": env.AUC_APP_ID,
             "token": env.AUC_ACCESS_TOKEN,

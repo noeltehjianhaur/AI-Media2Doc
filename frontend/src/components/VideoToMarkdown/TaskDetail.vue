@@ -37,7 +37,7 @@ const closeChatPanel = () => { showChatPanel.value = false }
 
         <!-- 悬浮AI助手按钮 -->
         <div class="floating-ai-btn">
-            <el-button type="primary" :icon="ChatDotRound" circle size="medium" @click="openChatPanel" title="AI智能助手" />
+            <el-button type="primary" :icon="ChatDotRound" circle size="default" @click="openChatPanel" title="AI智能助手" />
         </div>
         <!-- AI助手抽屉/侧边栏 -->
         <div v-if="showChatPanel" class="chat-panel-overlay" @click.self="closeChatPanel">

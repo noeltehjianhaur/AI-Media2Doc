@@ -56,6 +56,39 @@ $ make docker-image
 $ make run
 ```
 
+### LLM Configuration: Volcengine Ark with Gemini and OpenRouter Fallbacks
+
+The backend calls Volcengine Ark first. If that request fails, it tries Gemini and then OpenRouter when those providers are configured. Both fallback providers use OpenAI-compatible Chat Completions APIs.
+
+Set these values in `variables.env`:
+
+```dotenv
+# Primary provider: Volcengine Ark
+ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+ARK_MODEL_ID=your-ark-model-id
+ARK_API_KEY=your-ark-api-key
+
+# Optional fallback provider: Gemini
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+GEMINI_MODEL_ID=gemini-3.6-flash
+GEMINI_API_KEY=your-gemini-api-key
+
+# Optional fallback provider: OpenRouter
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL_ID=openai/gpt-4o-mini
+OPENROUTER_API_KEY=your-openrouter-api-key
+```
+
+To create the Ark configuration:
+
+1. Register for or sign in to [Volcengine](https://console.volcengine.com/), then complete any identity verification and billing requirements shown by the console.
+2. Open the [Ark console](https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?projectName=default), select the intended region and project, and enable a chat model under **Model Management**. Open the enabled model and copy its **Model ID** to `ARK_MODEL_ID`.
+3. In the Ark console, open **API Key Management**, select **Create API Key**, and copy the value immediately into `ARK_API_KEY`. Keep it server-side and never commit `variables.env`.
+4. Complete the S3-compatible storage and Volcengine audio-recognition values described in the backend deployment guide. Those services remain required for uploading and transcribing media.
+5. Start the published images with `docker compose up -d`, then open `http://localhost:5173`.
+
+The current `docker-compose.yaml` already uses published images, so `docker compose up -d` is sufficient; the `make docker-image` command documented above is not present in this revision's Makefile.
+
 ### 👾 Developer's Note
 
 The AI Media2Doc Assistant originated from an idea I had at the beginning of the year. As someone who enjoys reading, I prefer to convert video content into text for easier re-reading, thinking, and note-taking. However, I couldn't find a good tool to achieve this - most tools required login and payment. I didn't want to register too many accounts on the internet, nor did I want to upload my content to third-party platforms other than cloud providers. Therefore, I developed this small application under the MIT license, allowing anyone to experience audio/video to text conversion at a minimal cost.

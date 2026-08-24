@@ -12,8 +12,6 @@ RUN set -ex && \
     apt-get install -y --no-install-recommends git ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npm config set registry https://mirrors.cloud.tencent.com/npm/
-
 WORKDIR /app
 
 COPY package.json ./

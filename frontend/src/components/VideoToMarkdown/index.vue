@@ -139,9 +139,15 @@ const startProcessing = async () => {
     audioFilename.value = `${audioMd5}.mp3`
     const exists = await checkTaskExistsByMd5AndStyle(audioMd5, style.value)
     if (exists) {
-      updateStepStatus(2, 'error')
+      const existingTask = await getAnyTaskByMd5(audioMd5)
       isProcessing.value = false
-      ElMessage.warning('该音频已以相同风格处理过，请在历史记录中查看')
+      showStartButton.value = false
+      if (existingTask && existingTask.contentStyle === style.value && existingTask.markdownContent) {
+        ElMessage.info('该视频已处理过，正在打开历史结果')
+        eventBus.emit('view-task', existingTask)
+      } else {
+        ElMessage.warning('该音频已以相同风格处理过，请在历史记录中查看')
+      }
       return
     }
 

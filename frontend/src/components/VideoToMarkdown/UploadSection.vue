@@ -199,7 +199,7 @@ const handleMaxTokensChange = (val) => {
           <div class="style-selector-wrapper style-selector-flex">
             <el-radio-group v-model="localStyle" :disabled="isProcessing" @change="handleStyleChange" size="large"
               class="style-radio-group-flex">
-              <el-radio-button v-for="item in styleList" :key="item.label" :label="item.label"
+              <el-radio-button v-for="item in styleList" :key="item.label" :value="item.label"
                 class="style-radio-btn-flex" :disabled="item.label === 'cc'">
                 <img :src="item.icon" :alt="item.name" class="style-radio-icon" />
                 {{ item.name }}

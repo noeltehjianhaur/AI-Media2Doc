@@ -1,6 +1,8 @@
 services:
   backend:
-    image: hanshugithub/ai-media2doc-backend:latest
+    build:
+      context: ./backend
+    image: ai-media2doc-backend:local
     env_file:
       - "variables.env"
     deploy:
@@ -10,7 +12,9 @@ services:
       - "8080:8080"
 
   frontend:
-    image: hanshugithub/ai-media2doc-frontend:latest
+    build:
+      context: ./frontend
+    image: ai-media2doc-frontend:local
     deploy:
       mode: replicated
       replicas: 1
