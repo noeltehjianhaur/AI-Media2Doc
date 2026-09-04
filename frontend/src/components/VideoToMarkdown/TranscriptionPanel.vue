@@ -1,12 +1,12 @@
 <template>
     <div class="text-card half-height">
         <div class="section-header with-bar">
-            <h2>文本转录信息</h2>
-            <el-button type="primary" :icon="CopyDocument" circle size="small" title="复制含时间" @click="copyText"
+            <h2>{{ t('result.transcription') }}</h2>
+            <el-button type="primary" :icon="CopyDocument" circle size="small" :title="t('result.copyWithTime')" @click="copyText"
                 class="copy-btn" />
-            <el-button type="primary" :icon="Download" size="small" title="导出为字幕文件" @click="exportSRT"
+            <el-button type="primary" :icon="Download" size="small" :title="t('result.exportSubtitles')" @click="exportSRT"
                 class="export-btn rounded-btn" style="margin-left: 8px;">
-                导出字幕
+                {{ t('result.exportSubtitles') }}
             </el-button>
         </div>
         <div class="original-text-content">
@@ -29,6 +29,9 @@
 import { computed } from 'vue'
 import { ElButton, ElMessage } from 'element-plus'
 import { CopyDocument, Download } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
     transcription: {
@@ -62,22 +65,22 @@ const copyText = () => {
         textToCopy = `00:00 ${props.transcription}`
     }
     if (!textToCopy) {
-        ElMessage.warning('没有可复制的文本')
+        ElMessage.warning(t('result.nothingToCopy'))
         return
     }
     navigator.clipboard.writeText(textToCopy)
         .then(() => {
-            ElMessage.success('含时间戳文本已复制到剪贴板')
+            ElMessage.success(t('result.copiedWithTime'))
         })
         .catch(() => {
-            ElMessage.error('复制失败')
+            ElMessage.error(t('result.copyFailed'))
         })
 }
 
 // 导出 SRT 字幕文件
 const exportSRT = () => {
     if (!isSegmentArray.value || !Array.isArray(props.transcription)) {
-        ElMessage.warning('当前内容无法导出为字幕文件')
+        ElMessage.warning(t('result.cannotExport'))
         return
     }
     // SRT 文件头注释
@@ -106,7 +109,7 @@ const exportSRT = () => {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    ElMessage.success('字幕文件已导出')
+    ElMessage.success(t('result.srtExported'))
 }
 
 // 毫秒转 SRT 时间格式

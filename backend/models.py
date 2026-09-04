@@ -15,10 +15,22 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = None
     max_tokens: Optional[int]
     timeout: Optional[int]
+    target_language: Optional[str] = None
+
+
+class TranslationRequest(BaseModel):
+    text: str
+    target_language: str
+    max_tokens: Optional[int] = 8192
+    timeout: Optional[int] = 120
 
 
 class FileNameRequest(BaseModel):
     filename: str
+
+
+class VideoLinkRequest(BaseModel):
+    url: str
 
 
 class EnvResponse(BaseModel):

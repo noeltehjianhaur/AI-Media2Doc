@@ -1,45 +1,45 @@
 <template>
     <div class="other-settings">
-        <h3 class="other-title">其他设置</h3>
+        <h3 class="other-title">{{ t('settingsPanel.otherTitle') }}</h3>
         <div class="other-form-list">
             <div class="other-form-row">
                 <div class="form-content">
-                    <label class="other-label" for="max-records">前端允许保存记录的最大数量：</label>
+                    <label class="other-label" for="max-records">{{ t('settingsPanel.maxRecords') }}</label>
                     <el-input-number id="max-records" v-model="maxRecords" :min="1" :max="100" :step="1"
                         class="max-records-input" controls-position="right" />
                 </div>
                 <div class="form-tip">
-                    <span class="other-tip">默认为 10，范围 1~100。</span>
+                    <span class="other-tip">{{ t('settingsPanel.maxRecordsTip') }}</span>
                 </div>
             </div>
             <div class="other-form-row upload-size-row">
                 <div class="form-content">
-                    <label class="other-label" for="max-upload-size">前端允许最大上传文件大小：</label>
+                    <label class="other-label" for="max-upload-size">{{ t('settingsPanel.maxUploadSize') }}</label>
                     <el-input-number id="max-upload-size" v-model="maxUploadSize" :min="10" :max="1024" :step="10"
                         class="max-upload-size-input" controls-position="right" />
                 </div>
                 <div class="form-tip">
-                    <span class="other-tip">单位：MB，默认 200，范围 10~1024。当前：{{ maxUploadSize }}MB。</span>
+                    <span class="other-tip">MB, 10~1024. {{ maxUploadSize }}MB</span>
                 </div>
             </div>
             <div class="other-form-row video-api-row">
                 <div class="form-content">
-                    <label class="other-label" for="video-api-max-size">视频 API 截图大小阈值：</label>
+                    <label class="other-label" for="video-api-max-size">{{ t('settingsPanel.videoApiMaxSize') }}</label>
                     <el-input-number id="video-api-max-size" v-model="videoApiMaxSizeMB" :min="10" :max="2048" :step="10"
                         class="video-api-max-size-input" controls-position="right" />
                 </div>
                 <div class="form-tip">
-                    <span class="other-tip">单位：MB，默认 200M。</span>
+                    <span class="other-tip">{{ t('settingsPanel.videoApiMaxSizeTip') }}</span>
                 </div>
             </div>
             <div class="other-form-row polling-row">
                 <div class="form-content">
-                    <label class="other-label" for="max-polling-attempts">最大轮询次数：</label>
+                    <label class="other-label" for="max-polling-attempts">{{ t('settingsPanel.maxPolling') }}</label>
                     <el-input-number id="max-polling-attempts" v-model="maxPollingAttempts" :min="10" :max="1000"
                         :step="10" class="max-polling-attempts-input" controls-position="right" />
                 </div>
                 <div class="form-tip">
-                    <span class="other-tip">默认 60，范围 10~1000。用于音频转文字任务轮询。</span>
+                    <span class="other-tip">{{ t('settingsPanel.maxPollingTip') }}</span>
                 </div>
             </div>
             <transition name="fade-slide">
@@ -51,13 +51,13 @@
                             </path>
                         </svg>
                     </el-icon>
-                    <span class="warn-tip-text">超过 <b>200M</b> 可能导致处理卡顿！</span>
+                    <span class="warn-tip-text">{{ t('settingsPanel.sizeWarning', { size: '200M' }) }}</span>
                 </div>
             </transition>
         </div>
         <div class="save-btn-row other-save-btn-row">
-            <el-button type="primary" @click="saveOtherSettings">保存</el-button>
-            <span v-if="otherSaveSuccess" class="save-success-msg">已保存！</span>
+            <el-button type="primary" @click="saveOtherSettings">{{ t('common.save') }}</el-button>
+            <span v-if="otherSaveSuccess" class="save-success-msg">{{ t('settingsPanel.savedBang') }}</span>
         </div>
     </div>
 </template>
@@ -65,6 +65,9 @@
 <script setup>
 import { ref } from 'vue'
 import { ElInputNumber, ElButton, ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 function getLocalMaxRecords() {
     try {
@@ -130,7 +133,7 @@ function saveOtherSettings() {
     setLocalVideoApiMaxSizeMB(videoApiMaxSizeMB.value)
     setLocalMaxPollingAttempts(maxPollingAttempts.value)
     otherSaveSuccess.value = true
-    ElMessage.success('已保存到本地')
+    ElMessage.success(t('settingsPanel.savedLocally'))
     setTimeout(() => {
         otherSaveSuccess.value = false
     }, 2000)

@@ -1,47 +1,53 @@
 <template>
-    <el-dialog v-model="visible" title="自定义设置" width="65vw" class="settings-dialog" :close-on-click-modal="true"
+    <el-dialog v-model="visible" :title="t('settings.title')" width="65vw" class="settings-dialog" :close-on-click-modal="true"
         :close-on-press-escape="true" :show-close="true" @close="handleClose" append-to-body :z-index="9999">
         <div class="settings-dialog-body">
             <div class="settings-sidebar">
                 <div class="sidebar-header">
-                    <h3>设置分类</h3>
+                    <h3>{{ t('settings.title') }}</h3>
                 </div>
                 <ul class="sidebar-menu">
                     <li :class="{ active: activeMenu === 'style' }" @click="activeMenu = 'style'">
                         <el-icon>
                             <Document />
                         </el-icon>
-                        <span>风格设置</span>
+                        <span>{{ t('settings.style') }}</span>
+                    </li>
+                    <li :class="{ active: activeMenu === 'language' }" @click="activeMenu = 'language'">
+                        <el-icon>
+                            <ChatLineSquare />
+                        </el-icon>
+                        <span>{{ t('settings.language.title') }}</span>
                     </li>
                     <li :class="{ active: activeMenu === 'password' }" @click="activeMenu = 'password'">
                         <el-icon>
                             <Lock />
                         </el-icon>
-                        <span>访问密码</span>
+                        <span>{{ t('settings.password') }}</span>
                     </li>
                     <li :class="{ active: activeMenu === 'screenshot' }" @click="activeMenu = 'screenshot'">
                         <el-icon>
                             <Picture />
                         </el-icon>
-                        <span>智能截图</span>
+                        <span>{{ t('settings.screenshot') }}</span>
                     </li>
                     <li :class="{ active: activeMenu === 'other' }" @click="activeMenu = 'other'">
                         <el-icon>
                             <Setting />
                         </el-icon>
-                        <span>其他设置</span>
+                        <span>{{ t('settings.other') }}</span>
                     </li>
                     <li :class="{ active: activeMenu === 'connectivity' }" @click="activeMenu = 'connectivity'">
                         <el-icon>
                             <Link />
                         </el-icon>
-                        <span>连通性测试</span>
+                        <span>{{ t('settings.connectivity') }}</span>
                     </li>
                     <li :class="{ active: activeMenu === 'about' }" @click="activeMenu = 'about'">
                         <el-icon>
                             <InfoFilled />
                         </el-icon>
-                        <span>关于</span>
+                        <span>{{ t('settings.about') }}</span>
                     </li>
                 </ul>
             </div>
@@ -51,6 +57,7 @@
                 </div>
                 <div class="content-body">
                     <SettingsStyle v-if="activeMenu === 'style'" />
+                    <SettingsLanguage v-if="activeMenu === 'language'" />
                     <SettingsPassword v-if="activeMenu === 'password'" />
                     <SettingsScreenshot v-if="activeMenu === 'screenshot'" />
                     <SettingsOther v-if="activeMenu === 'other'" />
@@ -64,13 +71,17 @@
 
 <script setup>
 import { ref, watch, defineProps, defineEmits } from 'vue'
-import { Document, Lock, Picture, Setting, InfoFilled, Link } from '@element-plus/icons-vue'
+import { Document, Lock, Picture, Setting, InfoFilled, Link, ChatLineSquare } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import SettingsStyle from './SettingsStyle.vue'
+import SettingsLanguage from './SettingsLanguage.vue'
 import SettingsPassword from './SettingsPassword.vue'
 import SettingsScreenshot from './SettingsScreenshot.vue'
 import SettingsOther from './SettingsOther.vue'
 import SettingsAbout from './SettingsAbout.vue'
 import SettingsConnectivity from './SettingsConnectivity.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
     visible: {
@@ -90,27 +101,19 @@ function handleClose() {
 
 const activeMenu = ref('style')
 
-const menuConfig = {
-    style: {
-        title: '风格设置'
-    },
-    password: {
-        title: '访问密码'
-    },
-    screenshot: {
-        title: '智能截图'
-    },
-    other: {
-        title: '其他设置'
-    },
-    connectivity: { title: '连通性' },
-    about: {
-        title: '关于'
-    }
+const menuTitleKeys = {
+    style: 'settings.style',
+    language: 'settings.language.title',
+    password: 'settings.password',
+    screenshot: 'settings.screenshot',
+    other: 'settings.other',
+    connectivity: 'settings.connectivity',
+    about: 'settings.about'
 }
 
 function getMenuTitle() {
-    return menuConfig[activeMenu.value]?.title || '设置'
+    const key = menuTitleKeys[activeMenu.value]
+    return key ? t(key) : t('settings.title')
 }
 </script>
 

@@ -9,19 +9,15 @@ ENV LANG=C.UTF-8 \
     PYTHONUNBUFFERED=1
 
 RUN set -ex && \
-    sed -i 's/deb.debian.org/mirrors.cloud.tencent.com/g' /etc/apt/sources.list.d/debian.sources && \
-    apt update
+    apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
 
 WORKDIR /
 
 COPY requirements.txt .
-
-RUN set -ex && \
-    mkdir ~/.pip && \
-    echo "[global]" >> ~/.pip/pip.conf && \
-    echo "index-url=https://mirrors.tencent.com/pypi/simple/" >> ~/.pip/pip.conf
 
 RUN set -ex && \
     python -m venv .venv && \
@@ -35,17 +31,7 @@ WORKDIR /app
 COPY --from=builder /.venv /.venv
 ADD ./ ./
 
-ENV MODEL_ID="xxx" \
-    LLM_API_KEY="xxx" \
-    STORAGE_ACCESS_KEY="xxx" \
-    STORAGE_SECRET_KEY="xxx" \
-    STORAGE_ENDPOINT="xxx" \
-    STORAGE_REGION="xxx" \
-    STORAGE_BUCKET="xxx" \
-    AUC_APP_ID="xxx" \
-    AUC_ACCESS_TOKEN="xxx" \
-    AUC_CLUSTER_ID="xxx" \
-    LLM_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
+# Runtime configuration is supplied via docker-compose env_file (variables.env).
 
 EXPOSE 8080
 

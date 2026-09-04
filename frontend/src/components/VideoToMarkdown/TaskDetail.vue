@@ -4,6 +4,9 @@ import ChatPanel from './ChatPanel.vue'
 import TranscriptionPanel from './TranscriptionPanel.vue'
 import GeneratedContentPanel from './GeneratedContentPanel.vue'
 import { ChatDotRound } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
     task: {
@@ -37,7 +40,7 @@ const closeChatPanel = () => { showChatPanel.value = false }
 
         <!-- 悬浮AI助手按钮 -->
         <div class="floating-ai-btn">
-            <el-button type="primary" :icon="ChatDotRound" circle size="default" @click="openChatPanel" title="AI智能助手" />
+            <el-button type="primary" :icon="ChatDotRound" circle size="default" @click="openChatPanel" :title="t('chat.title')" />
         </div>
         <!-- AI助手抽屉/侧边栏 -->
         <div v-if="showChatPanel" class="chat-panel-overlay" @click.self="closeChatPanel">

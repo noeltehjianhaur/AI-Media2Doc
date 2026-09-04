@@ -3,11 +3,11 @@
         <div id="mindMapContainerFull" ref="containerRef" class="mind-map-container-full"></div>
 
         <div class="fullscreen-toolbar">
-            <el-button type="primary" :icon="Close" circle size="small" title="退出全屏" @click="handleClose" />
+            <el-button type="primary" :icon="Close" circle size="small" :title="t('result.exitFullscreen')" @click="handleClose" />
             <div class="toolbar-divider"></div>
-            <el-button type="default" :icon="ZoomIn" circle size="small" title="放大" @click="handleZoomIn" />
-            <el-button type="default" :icon="ZoomOut" circle size="small" title="缩小" @click="handleZoomOut" />
-            <el-button type="default" :icon="Aim" circle size="small" title="适应画布" @click="handleFit" />
+            <el-button type="default" :icon="ZoomIn" circle size="small" :title="t('result.zoomIn')" @click="handleZoomIn" />
+            <el-button type="default" :icon="ZoomOut" circle size="small" :title="t('result.zoomOut')" @click="handleZoomOut" />
+            <el-button type="default" :icon="Aim" circle size="small" :title="t('result.fitCanvas')" @click="handleFit" />
         </div>
     </div>
 </template>
@@ -16,7 +16,10 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElButton } from 'element-plus'
 import { Close, ZoomIn, ZoomOut, Aim } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import MindMap from 'simple-mind-map'
+
+const { t } = useI18n()
 
 const props = defineProps({
     content: { type: String, required: true }
@@ -81,7 +84,7 @@ const initMindMap = async () => {
         mindMapInstance.value.render()
         setTimeout(() => adjustView(), 120)
     } catch {
-        ElMessage.error('思维导图初始化失败')
+        ElMessage.error(t('result.mindMapInitFailed'))
     }
 }
 

@@ -2,6 +2,9 @@
 import { ElInput, ElPopover, ElInputNumber, ElIcon, ElTooltip } from 'element-plus'
 import { Operation, QuestionFilled } from '@element-plus/icons-vue'
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps({
     modelValue: {
@@ -105,15 +108,15 @@ const handleMaxTokensChange = (val) => {
                         <el-icon class="settings-icon">
                             <Operation />
                         </el-icon>
-                        <span class="settings-text">生成设置</span>
+                        <span class="settings-text">{{ t('remarks.generationSettings') }}</span>
                     </div>
                 </template>
 
                 <div class="settings-popover-content">
-                    <div class="settings-title-header">生成参数配置</div>
+                    <div class="settings-title-header">{{ t('remarks.generationParams') }}</div>
 
                     <div class="setting-row">
-                        <label class="setting-label">超时时间 (s):</label>
+                        <label class="setting-label">{{ t('remarks.timeout') }}</label>
                         <el-input-number v-model="localTimeout" :min="30" :max="600" :step="10"
                             @change="handleTimeoutChange" size="small" />
                     </div>
@@ -121,7 +124,7 @@ const handleMaxTokensChange = (val) => {
                     <div class="setting-row">
                         <div class="setting-label-with-tooltip">
                             <label class="setting-label">Max Tokens
-                                <el-tooltip content="Max Tokens 表示模型输出的丰富度, 越大表示内容越丰富 具体的值请参考对应的模型服务商说明。"
+                                <el-tooltip :content="t('remarks.maxTokensTip')"
                                     placement="top" :show-after="300">
                                     <el-icon class="tooltip-icon">
                                         <QuestionFilled />

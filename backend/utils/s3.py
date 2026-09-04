@@ -48,3 +48,14 @@ def generate_upload_url(file_name: str):
         Params={"Bucket": env.STORAGE_BUCKET, "Key": file_name},
         ExpiresIn=3600,
     )
+
+
+def upload_bytes(file_name: str, data: bytes, content_type: str = "audio/mpeg"):
+    """服务端直传对象到存储桶"""
+    get_s3_client().put_object(
+        Bucket=env.STORAGE_BUCKET,
+        Key=file_name,
+        Body=data,
+        ContentType=content_type,
+    )
+    return file_name

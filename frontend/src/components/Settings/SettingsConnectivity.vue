@@ -1,6 +1,6 @@
 <template>
     <div class="connectivity-settings">
-        <h3 class="conn-title">后端连通性测试</h3>
+        <h3 class="conn-title">{{ t('settingsPanel.connTitle') }}</h3>
         <div class="conn-tip">
             <el-icon style="margin-right:6px;color:#3b82f6;">
                 <svg viewBox="0 0 1024 1024" width="16" height="16">
@@ -8,22 +8,22 @@
                         d="M512 128a384 384 0 1 0 384 384A384 384 0 0 0 512 128zm0 704a320 320 0 1 1 320-320 320 320 0 0 1-320 320z" />
                 </svg>
             </el-icon>
-            用于检测前端后端的网络是否正常
+            {{ t('settingsPanel.connTip') }}
         </div>
 
         <div class="conn-status-card">
             <div class="status-line">
-                <span class="status-label">当前状态：</span>
+                <span class="status-label">{{ t('settingsPanel.currentStatus') }}</span>
                 <span class="status-indicator" :class="indicatorClass"></span>
                 <span class="status-text">{{ statusText }}</span>
             </div>
             <div class="meta-line">
-                <span>最近检测：{{ lastCheckDisplay }}</span>
+                <span>{{ t('settingsPanel.lastCheck') }}{{ lastCheckDisplay }}</span>
                 <span v-if="health && health.timestamp" class="split-dot">|</span>
-                <span v-if="health && health.timestamp">服务时间戳：{{ health.timestamp }}</span>
+                <span v-if="health && health.timestamp">{{ t('settingsPanel.serverTimestamp') }}{{ health.timestamp }}</span>
             </div>
             <div class="action-line">
-                <el-button size="small" type="primary" :loading="loading" @click="runCheck">重新检测</el-button>
+                <el-button size="small" type="primary" :loading="loading" @click="runCheck">{{ t('settingsPanel.recheck') }}</el-button>
             </div>
         </div>
 
@@ -31,17 +31,17 @@
             <div v-if="isHealthy" class="env-card">
                 <div class="env-card-header">
                     <div class="env-card-title">
-                        环境变量
-                        <span class="env-subtip" v-if="secretsLoading">加载中...</span>
+                        {{ t('settingsPanel.envVars') }}
+                        <span class="env-subtip" v-if="secretsLoading">{{ t('common.loading') }}</span>
                         <span class="env-subtip error" v-else-if="secretsError">{{ secretsError }}</span>
-                        <span class="env-subtip" v-else>共 {{ secretPairs.length }} 项</span>
+                        <span class="env-subtip" v-else>{{ secretPairs.length }}</span>
                     </div>
                     <div class="env-card-actions">
                         <el-button size="small" link type="primary" @click="reloadSecrets" :disabled="secretsLoading">
-                            刷新
+                            {{ t('settingsPanel.refresh') }}
                         </el-button>
                         <el-button size="small" link type="info" @click="toggleExpanded">
-                            {{ isExpanded ? '收起' : '展开' }}
+                            {{ isExpanded ? t('settingsPanel.collapse') : t('settingsPanel.expand') }}
                         </el-button>
                     </div>
                 </div>
@@ -51,8 +51,8 @@
                             <div class="env-key">
                                 {{ idx + 1 }}. {{ item.key }}
                             </div>
-                            <div class="env-value" :title="item.raw ?? '(未配置)'">
-                                <span v-if="item.raw === null" class="env-null">(未配置)</span>
+                            <div class="env-value" :title="item.raw ?? t('settingsPanel.notConfigured')">
+                                <span v-if="item.raw === null" class="env-null">{{ t('settingsPanel.notConfigured') }}</span>
                                 <span v-else>{{ item.raw }}</span>
                             </div>
                         </div>
@@ -68,6 +68,9 @@ import { ref, computed, onMounted } from 'vue'
 import { checkHealth, getSecrets } from '../../apis'
 import type { HealthCheckResponse, SecretsData } from '../../apis/types'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const health = ref<HealthCheckResponse | null>(null)
@@ -87,11 +90,11 @@ async function runCheck() {
         const data = await checkHealth()
         health.value = data
         lastCheckAt.value = Date.now()
-        ElMessage.success('健康检查成功')
+        ElMessage.success(t('settingsPanel.healthOk'))
         // 健康后拉取 secrets
         loadSecrets()
     } catch (e: any) {
-        error.value = e?.message || '检查失败'
+        error.value = e?.message || t('settingsPanel.checkFailed')
         health.value = null
         lastCheckAt.value = Date.now()
         ElMessage.error(error.value)
@@ -106,7 +109,7 @@ async function loadSecrets() {
     try {
         secrets.value = await getSecrets()
     } catch (e: any) {
-        secretsError.value = e?.message || '获取环境变量失败'
+        secretsError.value = e?.message || t('settingsPanel.envFetchFailed')
     } finally {
         secretsLoading.value = false
     }
@@ -129,7 +132,7 @@ function maskValue(s: string): string {
 }
 
 function displayValue(raw: string | null) {
-    if (raw === null || raw === undefined) return '(未配置)'
+    if (raw === null || raw === undefined) return t('settingsPanel.notConfigured')
     return showFull.value ? raw : maskValue(raw)
 }
 
@@ -143,10 +146,10 @@ const indicatorClass = computed(() => {
     return 'unknown'
 })
 const statusText = computed(() => {
-    if (loading.value) return '检测中...'
-    if (isHealthy.value) return '正常'
-    if (error.value) return '异常'
-    return '未知'
+    if (loading.value) return t('settingsPanel.checking')
+    if (isHealthy.value) return t('settingsPanel.statusHealthy')
+    if (error.value) return t('settingsPanel.statusError')
+    return t('settingsPanel.statusUnknown')
 })
 const lastCheckDisplay = computed(() => {
     if (!lastCheckAt.value) return '—'

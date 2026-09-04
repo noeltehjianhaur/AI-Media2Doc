@@ -1,122 +1,62 @@
 # 后端部署教程
 
-在启动后端服务之前, 需要先安装好依赖, 并且申请字节 Tos 对象存储服务 以及 对应大模型的 API 调用权限
+在启动后端服务之前, 需要先安装好依赖, 并申请 Gemini API Key 以及一个 S3 兼容的对象存储服务(推荐 Cloudflare R2)。
 
 **注意 ⚠️： 请至少保证你本地的 Python 版本为 3.9 及以上, 否则可能会出现依赖无法安装, 项目启动失败等问题。**
+
+链接转写功能依赖 `ffmpeg`, 本地运行前请确保系统已安装 `ffmpeg`(Docker 镜像中已内置)。
 
 ## 1. 安装依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-## 2. 配置环境变量(除了 WEB_ACCESS_PASSWORD 之外缺一不可)
-
+## 2. 配置环境变量
 
 ```bash
-export MODEL_ID=xxxx
-export LLM_API_KEY=xxxx
+# 主用服务商: Google Gemini(转写与图文生成都会先调用它)
+export GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+export GEMINI_MODEL_ID=gemini-3.6-flash
+export GEMINI_API_KEY=xxxx
+
+# 可选的备用服务商: OpenRouter
+export OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+export OPENROUTER_MODEL_ID=openai/gpt-4o-mini
+export OPENROUTER_API_KEY=xxxx
+
+# S3 兼容对象存储(例如 Cloudflare R2)
 export STORAGE_ACCESS_KEY=xxxx
 export STORAGE_SECRET_KEY=xxxx
 export STORAGE_ENDPOINT=xxxx
-export STORAGE_REGION=xxxx
+export STORAGE_REGION=auto
 export STORAGE_BUCKET=xxxx
-export AUC_APP_ID=xxxx
-export AUC_ACCESS_TOKEN=xxxx
-export AUC_CLUSTER_ID=xxxx 
+
 export WEB_ACCESS_PASSWORD=xxx
 ```
+
 环境变量说明:
 
-**WEB_ACCESS_PASSWORD**【选填】:前端访问后端服务的密码,后端指定之后需要在前端自定义设置-> 访问密码填写该密码才可以正常使用。
+**GEMINI_API_KEY / GEMINI_MODEL_ID**【必填】: 在 [Google AI Studio](https://aistudio.google.com/) 创建 API Key, 并选择支持音频输入的模型。
+
+**OPENROUTER_API_KEY / OPENROUTER_MODEL_ID**【选填】: Gemini 调用失败时的备用服务商。注意 `openai/gpt-4o-mini` 是付费模型, 若需免费额度请使用带 `:free` 后缀的模型。
+
+**STORAGE_\***【必填】: S3 兼容对象存储配置, 需要为存储桶添加允许 `http://localhost:5173` 的跨域规则。
+
+**WEB_ACCESS_PASSWORD**【选填】: 前端访问后端服务的密码, 后端指定之后需要在前端自定义设置-> 访问密码填写该密码才可以正常使用。
 
 ## 3. 启动服务
 ```bash
 python app.py
 ```
 
-## 在火山引擎获取对应的环境变量的值
-主要分为三部分, 火山方舟/字节Tos/音频识别大模型
+## 接口说明
 
-### 火山方舟
-#### MODEL_ID
-
-⚠️: 最新版本的 AI-Media2Doc 已经不再需要 ENDPOINT_ID, 由 MODEL_ID 代替。
-
-登录[方舟控制台](https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?projectName=default)。进入开通管理, 选择开通一个大语言模型。
-推荐使用 `doubao-1-5-pro-32k-250115` 。点击开通之后点击该大模型进入详情页，选择通用 LLM(没有就选主线模型), 复制红框内的 `模型 ID`，即为 `MODEL_ID` 的值。
-
-
-<p>
-<img src="../docs/images/model_id.png" alt="model id">
-</p>
-
-
-
-#### ARK_API_KEY
-在 API Key 管理中创建一个 API Key [参考文档](https://www.volcengine.com/docs/82379/1399008#_3-%E5%88%9B%E5%BB%BAAPIKey) 你就得到了 `ARK_API_KEY` 的值。
-
-### S3对象存储服务, 以火山引擎为例，你可以选择其他兼容 S3 协议的对象存储服务商。
-#### 创建 bucket 设置跨域规则
-登录[对象存储控制台](https://console.volcengine.com/tos) 创建一个 bucket, 创建完毕之后进入该 bucket。点击右侧权限管理, 找到跨域访问设置, 新建一条跨域访问规则。
-<p>
-<img src="../docs/images/cors.png" alt="tos access key">
-</p>
-当然你也可以根据实际情况灵活选择。
-
-#### STORAGE_ENDPOINT
-点击 **桶列表** -> **点进去你创建的那个 bucket** -> **点击概览** -> **眼睛往下看**
-
-你会看到一个访问域名, TOS_ENDPOINT 的值就是红框框里面那个，不同的区域 TOS_ENDPOINT 的值可能不一样。
-<p>
-<img src="../docs/images/tos_endpoint.png" alt="tos access key">
-</p>
-
-
-#### STORAGE_BUCKET
-`STORAGE_BUCKET` 的值就是你创建的 bucket 的名称。
-
-#### STORAGE_REGION
-`STORAGE_REGION` 的值就是你创建的 bucket 的区域, 例如 `cn-beijing`。
-
-
-#### STORAGE_ACCESS_KEY 和 STORAGE_SECRET_KEY
-进入 [IAM控制台](https://console.volcengine.com/iam/keymanage) 创建一个访问密钥,
-你就得到了 `STORAGE_ACCESS_KEY` 和 `STORAGE_SECRET_KEY` 的值。
-
-
-### 音频识别大模型
-
-火山方舟每个音频识别大模型都提供了 20 个小时的试用额度, 可以轮流试用。
-
-登录录音文件识别大模型控制台(https://console.volcengine.com/speech/service), 点击右侧**语音识别->录音文件识别**(注意不是录音文件识别大模型)， 创建一个应用, 你就得到了 `AUC_APP_ID` 和 `AUC_ACCESS_TOKEN` 和 `AUC_CLUSTER_ID` 的值。
-
-❗️**语音识别->录音文件识别** 不是**录音文件识别大模型**, 一定要注意区分。
-
-<p>
-<img src="../docs/images/auc.png" alt="tos access key">
-</p>
-
-
-#### AUC_APP_ID
-`AUC_APP_ID` 的值就是你创建的应用的 ID。
-
-#### AUC_ACCESS_TOKEN
-`AUC_ACCESS_TOKEN` 的值就是你创建的应用的 Access Token。
-
-
-#### AUC_CLUSTER_ID
-点击试用 `录音文件识别-通用-标准版` 或者极速版，**开通试用之后有 20 个小时的试用额度**，`Cluster ID` 列就表示 AUC_CLUSTER_ID 的值。
-
-<p>
-<img src="../docs/images/auc_detail.png" alt="tos access key">
-</p>
+- `POST /api/v1/audio/transcription-tasks` — 上传后的音频转写(自动识别语种, 保持原始语言)
+- `GET /api/v1/audio/transcription-tasks/{task_id}` — 查询转写结果
+- `POST /api/v1/link/transcription-tasks` — 通过视频/网页链接转写(使用 yt-dlp 抓取音轨)
+- `POST /api/v1/llm/translation` — 将转写文本翻译为目标语言
+- `POST /api/v1/llm/markdown-generation` — 生成图文内容, 可传 `target_language` 指定输出语言
 
 ### FAQ
-- ❓:如何使用 ChatGPT, Claude, Gemini 等第三方大模型。
--  默认 LLM 的代码 Openai SDK。 因此你可以通过替换 `LLM_BASE_URL`, `LLM_API_KEY` 和 `MODEL_ID` 三个环境变量的值来使用其他大模型。
-
-
-
-
-
-
+- ❓: 如何使用 ChatGPT, Claude 等第三方大模型。
+- 后端统一使用 OpenAI SDK 调用。你可以把 `OPENROUTER_BASE_URL`, `OPENROUTER_API_KEY` 和 `OPENROUTER_MODEL_ID` 替换成任意 OpenAI 兼容的服务商。注意音频转写需要服务商支持音频输入。

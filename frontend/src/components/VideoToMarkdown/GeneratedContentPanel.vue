@@ -18,17 +18,17 @@
                         circle
                         size="small"
                         class="outline-btn"
-                        title="大纲"
+                        :title="t('result.outline')"
                     />
                 </template>
                 <div class="outline-content" @click.stop>
                     <div v-if="outlineLoading" class="outline-loading">
                         <el-icon class="loading-icon"><Loading /></el-icon>
-                        <span class="loading-text">正在生成大纲…</span>
+                        <span class="loading-text">{{ t('result.generatingOutline') }}</span>
                         <el-skeleton animated :rows="6" style="margin-top:8px;" />
                     </div>
                     <div v-else>
-                        <div v-if="outlineItems.length === 0" class="outline-empty">当前内容暂无标题</div>
+                        <div v-if="outlineItems.length === 0" class="outline-empty">{{ t('result.noHeadings') }}</div>
                         <ul v-else class="outline-list">
                             <li
                                 v-for="item in outlineItems"
@@ -44,7 +44,7 @@
                     </div>
                 </div>
             </el-popover>
-            <el-button type="primary" :icon="Download" circle size="small" title="下载内容" @click="downloadContent"
+            <el-button type="primary" :icon="Download" circle size="small" :title="t('result.downloadContent')" @click="downloadContent"
                 class="copy-btn" />
         </div>
         <div class="original-text-content markdown-content-area">
@@ -63,7 +63,10 @@ import { ref, computed, nextTick, watch } from 'vue'
 import { ElButton } from 'element-plus'
 import { Download, List, Loading } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
+import { useI18n } from 'vue-i18n'
 import MindMapViewer from './MindMapViewer.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
     content: {
@@ -134,8 +137,8 @@ const isContentMindMap = computed(() => isJsonString(props.content))
 
 // 获取内容类型标题
 const getContentTypeTitle = () => {
-    if (isContentMindMap.value) return '思维导图'
-    return '图文信息'
+    if (isContentMindMap.value) return t('result.mindMap')
+    return t('result.content')
 }
 
 // 渲染后的内容

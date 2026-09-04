@@ -1,23 +1,28 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import UploadSection from './UploadSection.vue'
 import LoadingOverlay from './LoadingOverlay.vue'
 import { loadFFmpeg, extractAudio, captureVideoFrame, frameToBase64, cleanupVideoCache } from '../../utils/ffmpeg'
 import { submitAsrTask, pollAsrTask } from '../../apis/asrService'
 import { generateMarkdownText } from '../../apis/markdownService'
+import { submitLinkTask } from '../../apis/linkService'
+import { translateText, getTargetLanguage } from '../../apis/translationService'
 import { calculateMD5 } from '../../utils/md5'
 import { getAudioUploadUrl, uploadFile } from '../../apis'
 import { saveTask, checkTaskExistsByMd5AndStyle, getAnyTaskByMd5, getTaskByID } from '../../utils/db'
 import { eventBus } from '../../utils/eventBus'
 
 const stepDefs = [
-  { title: '初始化 FFmpeg', icon: 'Promotion', status: 'wait' },
-  { title: '提取音频', icon: 'Headset', status: 'wait' },
-  { title: '上传文件', icon: 'Upload', status: 'wait' },
-  { title: '音频转文字', icon: 'Document', status: 'wait' },
-  { title: '生成图文', icon: 'Document', status: 'wait' }
+  { titleKey: 'steps.initFfmpeg', icon: 'Promotion', status: 'wait' },
+  { titleKey: 'steps.extractAudio', icon: 'Headset', status: 'wait' },
+  { titleKey: 'steps.uploadFile', icon: 'Upload', status: 'wait' },
+  { titleKey: 'steps.transcribe', icon: 'Document', status: 'wait' },
+  { titleKey: 'steps.generate', icon: 'Document', status: 'wait' }
 ]
+
+const { t } = useI18n()
 
 const steps = ref(stepDefs.map(s => ({ ...s })))
 const activeStep = ref(0)
@@ -28,6 +33,7 @@ const isProcessing = ref(false)
 
 const file = ref(null)
 const fileName = ref('')
+const linkUrl = ref('')
 const showStyleSelector = ref(false)
 const style = ref('')
 const remarks = ref('')
@@ -59,6 +65,7 @@ const resetAll = () => {
   isProcessing.value = false
   file.value = null
   fileName.value = ''
+  linkUrl.value = ''
   showStyleSelector.value = false
   style.value = ''
   showStartButton.value = false
@@ -109,6 +116,26 @@ const updateStepStatus = (idx, status) => {
 
 const isMP3File = (f) => f && (f.type === 'audio/mpeg' || f.name.toLowerCase().endsWith('.mp3'))
 
+// 转写结果默认保留原始语言，仅在用户选择目标语言时翻译
+const applyTargetLanguage = async (segments) => {
+  const targetLanguage = getTargetLanguage()
+  if (!targetLanguage || !segments) return segments
+
+  if (!Array.isArray(segments)) {
+    return await translateText(String(segments), targetLanguage, llmTimeout.value, llmMaxTokens.value)
+  }
+
+  const translated = []
+  for (const seg of segments) {
+    if (!seg?.text) {
+      translated.push(seg)
+      continue
+    }
+    translated.push({ ...seg, text: await translateText(seg.text, targetLanguage, llmTimeout.value, llmMaxTokens.value) })
+  }
+  return translated
+}
+
 const startProcessing = async () => {
   if (!file.value || !style.value) return
   isProcessing.value = true
@@ -127,7 +154,7 @@ const startProcessing = async () => {
     let audioBuf
     if (isMP3File(file.value)) {
       audioBuf = new Uint8Array(await file.value.arrayBuffer())
-      ElMessage.success('检测到MP3文件，跳过音频提取')
+      ElMessage.success(t('process.mp3Detected'))
     } else {
       audioBuf = await extractAudio(new Uint8Array(await file.value.arrayBuffer()))
     }
@@ -143,10 +170,10 @@ const startProcessing = async () => {
       isProcessing.value = false
       showStartButton.value = false
       if (existingTask && existingTask.contentStyle === style.value && existingTask.markdownContent) {
-        ElMessage.info('该视频已处理过，正在打开历史结果')
+        ElMessage.info(t('process.alreadyProcessed'))
         eventBus.emit('view-task', existingTask)
       } else {
-        ElMessage.warning('该音频已以相同风格处理过，请在历史记录中查看')
+        ElMessage.warning(t('process.alreadyProcessedSameStyle'))
       }
       return
     }
@@ -168,7 +195,7 @@ const startProcessing = async () => {
       updateStepStatus(3, 'processing')
       const taskId = await submitAsrTask(audioFilename.value)
       const text = await pollAsrTask(taskId)
-      transcriptionText.value = text
+      transcriptionText.value = await applyTargetLanguage(text)
       textTranscribed.value = true
       updateStepStatus(3, 'success')
     }
@@ -176,24 +203,7 @@ const startProcessing = async () => {
     // 5. 生成内容
     updateStepStatus(4, 'processing')
     // 处理转录文本，支持字幕格式
-    let processedText
-    if (Array.isArray(transcriptionText.value) && transcriptionText.value.length > 0 && typeof transcriptionText.value[0] === 'object' && 'text' in transcriptionText.value[0]) {
-      // 转换为字幕格式，包含时间戳信息
-      processedText = transcriptionText.value.map(seg => {
-        const startMin = Math.floor(seg.start_time / 60000)
-        const startSec = Math.floor((seg.start_time % 60000) / 1000)
-        const endMin = Math.floor(seg.end_time / 60000)
-        const endSec = Math.floor((seg.end_time % 60000) / 1000)
-        const startTime = `${startMin.toString().padStart(2, '0')}:${startSec.toString().padStart(2, '0')}`
-        const endTime = `${endMin.toString().padStart(2, '0')}:${endSec.toString().padStart(2, '0')}`
-        const startTotalSec = Math.floor(seg.start_time / 1000)
-        const endTotalSec = Math.floor(seg.end_time / 1000)
-
-        return `[${startTime} - ${endTime} 时间范围秒数:(${startTotalSec}s-${endTotalSec}s)] ${seg.text}`
-      }).join('\n')
-    } else {
-      processedText = transcriptionText.value
-    }
+    const processedText = formatTranscript(transcriptionText.value)
     const md = await generateMarkdownText(processedText, style.value, remarks.value, llmTimeout.value, llmMaxTokens.value)
     // 提取所有时间戳标记 #image[20] 格式（整数秒数）
     const imageTimeRegex = /#image\[(\d+)\]/g
@@ -215,7 +225,7 @@ const startProcessing = async () => {
     }
     const taskId = await saveTask(task)
     eventBus.emit('task-updated')
-    ElMessage.success('图文内容生成完成')
+    ElMessage.success(t('process.completed'))
     // 用 taskId 查询完整任务对象并跳转
     const savedTask = await getTaskByID(taskId)
     if (savedTask) {
@@ -223,10 +233,97 @@ const startProcessing = async () => {
     }
   } catch (e) {
     updateStepStatus(activeStep.value, 'error')
-    ElMessage.error(e.message || '处理失败')
+    ElMessage.error(e.message || t('process.failed'))
   } finally {
     isProcessing.value = false
     showStartButton.value = false
+  }
+}
+
+// 将转写分段格式化为带时间标记的文本
+function formatTranscript(segments) {
+  if (Array.isArray(segments) && segments.length > 0 && typeof segments[0] === 'object' && 'text' in segments[0]) {
+    return segments.map(seg => {
+      const startMin = Math.floor(seg.start_time / 60000)
+      const startSec = Math.floor((seg.start_time % 60000) / 1000)
+      const endMin = Math.floor(seg.end_time / 60000)
+      const endSec = Math.floor((seg.end_time % 60000) / 1000)
+      const startTime = `${startMin.toString().padStart(2, '0')}:${startSec.toString().padStart(2, '0')}`
+      const endTime = `${endMin.toString().padStart(2, '0')}:${endSec.toString().padStart(2, '0')}`
+      const startTotalSec = Math.floor(seg.start_time / 1000)
+      const endTotalSec = Math.floor(seg.end_time / 1000)
+
+      return `[${startTime} - ${endTime} 时间范围秒数:(${startTotalSec}s-${endTotalSec}s)] ${seg.text}`
+    }).join('\n')
+  }
+  return segments
+}
+
+const handleLinkSubmitted = async (url) => {
+  resetAll()
+  linkUrl.value = url
+  fileName.value = url
+  showStyleSelector.value = true
+}
+
+const startLinkProcessing = async () => {
+  if (!linkUrl.value || !style.value) return
+  isProcessing.value = true
+  steps.value = stepDefs.map(s => ({ ...s }))
+  try {
+    // 链接模式不需要本地 FFmpeg 与音频提取
+    updateStepStatus(0, 'success')
+    updateStepStatus(1, 'success')
+
+    updateStepStatus(2, 'processing')
+    updateStepStatus(3, 'processing')
+    const { task_id: taskId } = await submitLinkTask(linkUrl.value)
+    updateStepStatus(2, 'success')
+    const text = await pollAsrTask(taskId)
+    transcriptionText.value = await applyTargetLanguage(text)
+    textTranscribed.value = true
+    updateStepStatus(3, 'success')
+
+    updateStepStatus(4, 'processing')
+    const md = await generateMarkdownText(
+      formatTranscript(transcriptionText.value),
+      style.value,
+      remarks.value,
+      llmTimeout.value,
+      llmMaxTokens.value
+    )
+    // 链接模式没有本地视频文件，移除截图标记
+    markdownContent.value = md.replace(/#image\[\d+\]/g, '')
+    updateStepStatus(4, 'success')
+
+    const task = {
+      fileName: linkUrl.value,
+      md5: `link-${Date.now()}`,
+      transcriptionText: transcriptionText.value,
+      markdownContent: markdownContent.value,
+      contentStyle: style.value,
+      createdAt: new Date().toISOString()
+    }
+    const savedId = await saveTask(task)
+    eventBus.emit('task-updated')
+    const savedTask = await getTaskByID(savedId)
+    if (savedTask) {
+      eventBus.emit('view-task', savedTask)
+    }
+  } catch (e) {
+    updateStepStatus(activeStep.value, 'error')
+    ElMessage.error(e.message || t('process.failed'))
+  } finally {
+    isProcessing.value = false
+    showStartButton.value = false
+  }
+}
+
+const handleStartProcess = () => {
+  if (linkUrl.value) {
+    startLinkProcessing()
+  } else {
+    startProcessing()
   }
 }
 
@@ -309,7 +406,10 @@ async function processImageMarkers(md, file, imageTimeMarkers) {
 // 步骤百分比辅助
 const stepPercents = [10, 30, 50, 80, 100]
 const percent = computed(() => stepPercents[activeStep.value] || 0)
-const stepText = computed(() => steps.value[activeStep.value]?.title || '')
+const stepText = computed(() => {
+  const key = steps.value[activeStep.value]?.titleKey
+  return key ? t(key) : ''
+})
 
 </script>
 
@@ -320,7 +420,8 @@ const stepText = computed(() => steps.value[activeStep.value]?.title || '')
       <div v-if="!isProcessing && !markdownContent" class="component-wrapper">
         <UploadSection :ffmpeg-loading="ffmpegLoading" :is-processing="isProcessing" :file="file" :file-name="fileName"
           :file-size="fileSize" :file-md5="fileMd5" :md5-calculating="md5Calculating" :style="style"
-          @file-selected="handleFileSelected" @update:style="handleStyleSelected" @start-process="startProcessing"
+          :link-url="linkUrl" @file-selected="handleFileSelected" @link-submitted="handleLinkSubmitted"
+          @update:style="handleStyleSelected" @start-process="handleStartProcess"
           :remarks="remarks" @update:remarks="handleRemarksUpdate" @reset="resetAll"
           @update:timeout="handleLLMTimeoutChange" @update:max-tokens="handleLLMMaxTokensChange" />
       </div>

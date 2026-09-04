@@ -101,7 +101,7 @@ export interface Task {
 }
 
 // 兼容旧代码的类型别名
-export interface AudioTaskResponse extends UploadUrlResponse {}
+export interface AudioTaskResponse extends UploadUrlResponse { }
 
 /**
  * 健康检查 data 响应结构
@@ -123,18 +123,17 @@ export interface HealthCheckResponse {
  * 说明: 部分值可能已做脱敏或为 null
  */
 export interface SecretsData {
-  LLM_BASE_URL: string | null;
-  LLM_MODEL_ID: string | null;
-  LLM_API_KEY: string | null;
-  LLM_MAX_TOKENS: number | null;
-  TOS_ACCESS_KEY: string | null;
-  TOS_SECRET_KEY: string | null;
-  TOS_ENDPOINT: string | null;
-  TOS_REGION: string | null;
-  TOS_BUCKET: string | null;
-  AUC_APP_ID: string | null;
-  AUC_ACCESS_TOKEN: string | null;
-  AUC_CLUSTER_ID: string | null;
+  GEMINI_BASE_URL: string | null;
+  GEMINI_MODEL_ID: string | null;
+  GEMINI_API_KEY: string | null;
+  OPENROUTER_BASE_URL: string | null;
+  OPENROUTER_MODEL_ID: string | null;
+  OPENROUTER_API_KEY: string | null;
+  STORAGE_ACCESS_KEY: string | null;
+  STORAGE_SECRET_KEY: string | null;
+  STORAGE_ENDPOINT: string | null;
+  STORAGE_REGION: string | null;
+  STORAGE_BUCKET: string | null;
   WEB_ACCESS_PASSWORD: string | null;
 }
 

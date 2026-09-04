@@ -29,7 +29,11 @@ AI Media2Doc Assistant is a web tool based on AI large models that converts vide
 - ✅ **Fully Open Source**: Licensed under MIT, supports local deployment.
 - 🔒 **Privacy Protection**: No login or registration required, task records saved locally.
 - 💻 **Frontend Processing**: Uses ffmpeg wasm technology, no need to install ffmpeg locally.
-- 🎯 **Multiple Style Support**: Supports various document styles like Xiaohongshu/WeChat Official Account/Knowledge Notes/Mind Maps/Content Summaries.
+- � **Multilingual Transcription**: The spoken language is auto-detected and transcribed in that same language.
+- 🌐 **Target-Language Translation**: Pick an output language in Settings to translate the transcript and generated document.
+- 🗣️ **Interface Language Switch**: Toggle the whole UI between English and Simplified Chinese.
+- 🔗 **Video Link Transcription**: Paste a video or web page link (e.g. Xiaohongshu, YouTube, Facebook) to transcribe it.
+- �🎯 **Multiple Style Support**: Supports various document styles like Xiaohongshu/WeChat Official Account/Knowledge Notes/Mind Maps/Content Summaries.
 - 🤖 **AI Conversation**: Supports secondary Q&A based on video content.
 - 🤖 **Local Deployment Friendly**: With basic development knowledge, you can get it running in no time.
 - 🐳 **One-Click Deployment**: Supports one-click deployment with Docker.
@@ -42,13 +46,9 @@ AI Media2Doc Assistant is a web tool based on AI large models that converts vide
 
 ### 📦 Installation Guide
 
-1) Image Build:
+1) Download `docker-compose.yaml` and `variables_template.env` from the project root.
 
-```shell
-$ make docker-image
-```
-
-2) Please refer to the [Backend Deployment Guide / Configuration Instructions](https://github.com/hanshuaikang/AI-Media2Doc/blob/main/backend/README.md#%E5%9C%A8%E7%81%AB%E5%B1%B1%E5%BC%95%E6%93%8E%E8%8E%B7%E5%8F%96%E5%AF%B9%E5%BA%94%E7%9A%84%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F%E7%9A%84%E5%80%BC) to complete the `variables.env` file in the root directory.
+2) Please refer to the [Backend Deployment Guide / Configuration Instructions](./backend/README.md) to complete the `variables.env` file in the root directory.
 
 3) Run the Project:
 
@@ -56,19 +56,14 @@ $ make docker-image
 $ make run
 ```
 
-### LLM Configuration: Volcengine Ark with Gemini and OpenRouter Fallbacks
+### LLM & ASR Configuration: Gemini with OpenRouter Fallback
 
-The backend calls Volcengine Ark first. If that request fails, it tries Gemini and then OpenRouter when those providers are configured. Both fallback providers use OpenAI-compatible Chat Completions APIs.
+Both transcription and document generation call Google Gemini first. If that request fails, OpenRouter is tried when configured. Both providers use OpenAI-compatible Chat Completions APIs. Volcengine Ark and Volcengine AUC are no longer used.
 
 Set these values in `variables.env`:
 
 ```dotenv
-# Primary provider: Volcengine Ark
-ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-ARK_MODEL_ID=your-ark-model-id
-ARK_API_KEY=your-ark-api-key
-
-# Optional fallback provider: Gemini
+# Primary provider: Google Gemini
 GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 GEMINI_MODEL_ID=gemini-3.6-flash
 GEMINI_API_KEY=your-gemini-api-key
@@ -77,17 +72,29 @@ GEMINI_API_KEY=your-gemini-api-key
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_MODEL_ID=openai/gpt-4o-mini
 OPENROUTER_API_KEY=your-openrouter-api-key
+
+# S3-compatible object storage (e.g. Cloudflare R2)
+STORAGE_ACCESS_KEY=your-access-key
+STORAGE_SECRET_KEY=your-secret-key
+STORAGE_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+STORAGE_REGION=auto
+STORAGE_BUCKET=your-bucket
 ```
 
-To create the Ark configuration:
+Setup steps:
 
-1. Register for or sign in to [Volcengine](https://console.volcengine.com/), then complete any identity verification and billing requirements shown by the console.
-2. Open the [Ark console](https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?projectName=default), select the intended region and project, and enable a chat model under **Model Management**. Open the enabled model and copy its **Model ID** to `ARK_MODEL_ID`.
-3. In the Ark console, open **API Key Management**, select **Create API Key**, and copy the value immediately into `ARK_API_KEY`. Keep it server-side and never commit `variables.env`.
-4. Complete the S3-compatible storage and Volcengine audio-recognition values described in the backend deployment guide. Those services remain required for uploading and transcribing media.
-5. Start the published images with `docker compose up -d`, then open `http://localhost:5173`.
+1. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/) and copy it into `GEMINI_API_KEY`. Pick an audio-capable model for `GEMINI_MODEL_ID`.
+2. Optionally create an [OpenRouter](https://openrouter.ai/) key for `OPENROUTER_API_KEY`. Note that `openai/gpt-4o-mini` is a paid model; use a `:free`-suffixed model to stay on the free tier.
+3. Create an S3-compatible bucket (Cloudflare R2 works well) and add a CORS rule allowing `http://localhost:5173`.
+4. Run `docker compose up -d`, then open `http://localhost:5173`.
 
-The current `docker-compose.yaml` already uses published images, so `docker compose up -d` is sufficient; the `make docker-image` command documented above is not present in this revision's Makefile.
+### Features
+
+- **Multilingual transcription** – the spoken language is auto-detected and the transcript is produced in that same language.
+- **Target-language translation** – pick an output language under **Settings → Language** to translate the transcript and generated document.
+- **Interface language** – switch the whole UI between English and Simplified Chinese under **Settings → Language**.
+- **File upload** – MP4, MOV, AVI, MKV, WebM and MP3 are supported.
+- **Video link transcription** – paste a video or web page link on the upload screen. Success depends on platform restrictions; some sites block downloads.
 
 ### 👾 Developer's Note
 

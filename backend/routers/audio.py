@@ -1,14 +1,12 @@
 # -*- coding: UTF-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 import base64
-import hashlib
-import json
+import time
 import uuid
 import requests
 from openai import OpenAI
-from throttled import Throttled, per_sec, MemoryStore
 
-from constants import VolcengineASRResponseStatusCode, AsrTaskStatus
+from constants import AsrTaskStatus
 from models import FileNameRequest
 from core.exceptions import BusinessException, ExternalServiceException
 from core.response import success_response, APIResponse
@@ -18,21 +16,51 @@ from utils.s3 import generate_download_url
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 logger = get_logger(__name__)
-STORE = MemoryStore()
-GEMINI_ASR_TASKS = {}
+ASR_TASKS = {}
+
+# Language auto-detection is delegated to the model; the transcript keeps the spoken language.
+TRANSCRIPTION_PROMPT = (
+    "Transcribe this audio accurately. Return only the spoken text."
+)
 
 
-def volcengine_asr_is_configured():
-    values = [env.AUC_APP_ID, env.AUC_ACCESS_TOKEN, env.AUC_CLUSTER_ID]
-    return all(values) and not any(str(value).startswith("your-") for value in values)
+def get_asr_providers():
+    """Ordered ASR providers: Gemini first, OpenRouter as fallback."""
+    providers = []
+    if all([env.GEMINI_BASE_URL, env.GEMINI_API_KEY, env.GEMINI_MODEL_ID]):
+        providers.append(
+            (
+                "Google Gemini",
+                env.GEMINI_BASE_URL,
+                env.GEMINI_API_KEY,
+                env.GEMINI_MODEL_ID,
+            )
+        )
+    if all(
+        [
+            env.OPENROUTER_BASE_URL,
+            env.OPENROUTER_API_KEY,
+            env.OPENROUTER_ASR_MODEL_ID,
+        ]
+    ):
+        providers.append(
+            (
+                "OpenRouter",
+                env.OPENROUTER_BASE_URL,
+                env.OPENROUTER_API_KEY,
+                env.OPENROUTER_ASR_MODEL_ID,
+            )
+        )
+    return providers
 
 
-def create_gemini_transcription_task(filename):
-    """Transcribe the uploaded MP3 through Gemini when Volcengine ASR is unavailable."""
-    if not all([env.GEMINI_BASE_URL, env.GEMINI_API_KEY, env.GEMINI_MODEL_ID]):
+def transcribe_audio(filename):
+    """Download the uploaded MP3 from object storage and transcribe it via the LLM providers."""
+    providers = get_asr_providers()
+    if not providers:
         raise ExternalServiceException(
-            "Gemini ASR",
-            "Configure GEMINI_API_KEY and GEMINI_MODEL_ID before using Gemini transcription",
+            "ASR",
+            "Configure GEMINI_API_KEY/GEMINI_MODEL_ID or OPENROUTER_API_KEY/OPENROUTER_MODEL_ID",
         )
 
     download_url = generate_download_url(filename)
@@ -40,44 +68,80 @@ def create_gemini_transcription_task(filename):
     audio_response.raise_for_status()
     audio_data = base64.b64encode(audio_response.content).decode("ascii")
 
-    response = OpenAI(
-        base_url=env.GEMINI_BASE_URL,
-        api_key=env.GEMINI_API_KEY,
-    ).chat.completions.create(
-        model=env.GEMINI_MODEL_ID,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Transcribe this audio accurately. Return only the spoken text.",
-                    },
-                    {
-                        "type": "input_audio",
-                        "input_audio": {"data": audio_data, "format": "mp3"},
-                    },
-                ],
-            }
-        ],
-        timeout=120,
-    )
-    text = response.choices[0].message.content or ""
-    task_id = f"gemini-{uuid.uuid4()}"
-    GEMINI_ASR_TASKS[task_id] = text
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": TRANSCRIPTION_PROMPT},
+                {
+                    "type": "input_audio",
+                    "input_audio": {"data": audio_data, "format": "mp3"},
+                },
+            ],
+        }
+    ]
+
+    last_error = None
+    for provider_name, base_url, api_key, model_id in providers:
+        for attempt in range(3):
+            try:
+                response = OpenAI(
+                    base_url=base_url,
+                    api_key=api_key,
+                    max_retries=0,
+                ).chat.completions.create(
+                    model=model_id, messages=messages, timeout=90
+                )
+                text = (response.choices[0].message.content or "").strip()
+                if not text:
+                    raise ExternalServiceException(
+                        "ASR",
+                        "No spoken text was detected in the extracted audio",
+                    )
+                return text
+            except Exception as error:
+                last_error = error
+                is_transient = "503" in str(error) or "UNAVAILABLE" in str(error)
+                if not is_transient or attempt == 2:
+                    logger.warning(f"{provider_name} transcription failed: {error}")
+                    break
+
+                retry_delay = 10 * (attempt + 1)
+                logger.warning(
+                    f"{provider_name} is temporarily unavailable; retrying in "
+                    f"{retry_delay} seconds (attempt {attempt + 2}/3)"
+                )
+                time.sleep(retry_delay)
+
+    raise ExternalServiceException("ASR", f"All providers failed: {last_error}")
+
+
+def create_transcription_record(filename):
+    task_id = f"asr-{uuid.uuid4()}"
+    ASR_TASKS[task_id] = {
+        "status": AsrTaskStatus.RUNNING.value,
+        "text": None,
+        "error": None,
+    }
     return task_id
 
 
-def generate_local_uuid():
-    """生成本地UUID"""
-    mac = uuid.getnode()
-    mac_address = ":".join(("%012X" % mac)[i : i + 2] for i in range(0, 12, 2))
-    md5_obj = hashlib.md5(mac_address.encode("utf-8"))
-    return md5_obj.hexdigest()
+def run_transcription_task(task_id, filename):
+    """Run provider calls after task creation so the client can poll safely."""
+    try:
+        ASR_TASKS[task_id]["text"] = transcribe_audio(filename)
+        ASR_TASKS[task_id]["status"] = AsrTaskStatus.FINISHED.value
+        logger.info(f"Transcription task {task_id} completed successfully")
+    except Exception as error:
+        logger.error(f"Transcription task {task_id} failed: {error}")
+        ASR_TASKS[task_id]["status"] = AsrTaskStatus.FAILED.value
+        ASR_TASKS[task_id]["error"] = str(error)
 
 
 @router.post("/transcription-tasks", response_model=APIResponse)
-async def create_transcription_task(request: FileNameRequest):
+async def create_transcription_task(
+    request: FileNameRequest, background_tasks: BackgroundTasks
+):
     """创建音频转写任务
 
     RESTful路径: POST /api/v1/audio/transcription-tasks
@@ -85,48 +149,8 @@ async def create_transcription_task(request: FileNameRequest):
     logger.info(f"Creating transcription task for file: {request.filename}")
 
     try:
-        if not volcengine_asr_is_configured():
-            task_id = create_gemini_transcription_task(request.filename)
-            return success_response(
-                data={"task_id": task_id},
-                message="Gemini transcription task created successfully",
-            )
-
-        submit_url = "https://openspeech.bytedance.com/api/v1/auc/submit"
-        download_url = generate_download_url(request.filename)
-
-        data = {
-            "app": {
-                "appid": env.AUC_APP_ID,
-                "token": env.AUC_ACCESS_TOKEN,
-                "cluster": env.AUC_CLUSTER_ID,
-            },
-            "user": {
-                "uid": generate_local_uuid(),
-            },
-            "audio": {"format": "mp3", "url": download_url},
-            "request": {"model_name": "bigmodel", "enable_itn": True},
-        }
-
-        headers = {
-            "Authorization": f"Bearer; {env.AUC_ACCESS_TOKEN}",
-        }
-
-        with Throttled(
-            key=env.AUC_APP_ID, store=STORE, quota=per_sec(limit=100, burst=100)
-        ):
-            response = requests.post(submit_url, data=json.dumps(data), headers=headers)
-
-        response.raise_for_status()
-        resp = response.json()
-
-        if resp["resp"]["message"] != "success":
-            logger.error(f"ASR service returned error: {resp}")
-            raise ExternalServiceException(
-                "Volcengine ASR", f"Submit task failed: {resp['resp']['message']}"
-            )
-
-        task_id = resp["resp"]["id"]
+        task_id = create_transcription_record(request.filename)
+        background_tasks.add_task(run_transcription_task, task_id, request.filename)
 
         logger.info(f"Transcription task created successfully with ID: {task_id}")
 
@@ -134,9 +158,11 @@ async def create_transcription_task(request: FileNameRequest):
             data={"task_id": task_id}, message="Transcription task created successfully"
         )
 
+    except ExternalServiceException:
+        raise
     except requests.RequestException as e:
         logger.error(f"Request failed when creating transcription task: {str(e)}")
-        raise ExternalServiceException("Volcengine ASR", f"Request failed: {str(e)}")
+        raise ExternalServiceException("ASR", f"Request failed: {str(e)}")
     except Exception as e:
         logger.error(f"Unexpected error when creating transcription task: {str(e)}")
         raise BusinessException(f"Failed to create transcription task: {str(e)}")
@@ -151,86 +177,36 @@ async def get_transcription_task(task_id: str):
     logger.info(f"Querying transcription task status: {task_id}")
 
     try:
-        if task_id in GEMINI_ASR_TASKS:
+        if task_id not in ASR_TASKS:
+            logger.error(f"Transcription task {task_id} not found")
             return success_response(
-                data={
-                    "status": AsrTaskStatus.FINISHED.value,
-                    "result": [
-                        {
-                            "start_time": 0,
-                            "end_time": 0,
-                            "text": GEMINI_ASR_TASKS[task_id],
-                        }
-                    ],
-                },
-                message="Gemini transcription completed",
+                data={"status": AsrTaskStatus.FAILED.value, "result": None},
+                message="Transcription task not found",
             )
 
-        data = {
-            "appid": env.AUC_APP_ID,
-            "token": env.AUC_ACCESS_TOKEN,
-            "cluster": env.AUC_CLUSTER_ID,
-            "id": task_id,
-        }
-        query_url = "https://openspeech.bytedance.com/api/v1/auc/query"
-
-        headers = {
-            "Authorization": f"Bearer; {env.AUC_ACCESS_TOKEN}",
-        }
-
-        with Throttled(
-            key=env.AUC_APP_ID, store=STORE, quota=per_sec(limit=100, burst=100)
-        ):
-            response = requests.post(query_url, json.dumps(data), headers=headers)
-
-        response.raise_for_status()
-        resp = response.json()
-
-        code = resp["resp"]["code"]
-
-        if code == VolcengineASRResponseStatusCode.SUCCESS.value:
-            utterances = resp["resp"]["utterances"]
-            result = [
-                {
-                    "start_time": utterance["start_time"],
-                    "end_time": utterance["end_time"],
-                    "text": utterance["text"],
-                }
-                for utterance in utterances
-            ]
-
-            logger.info(f"Transcription task {task_id} completed successfully")
-
-            return success_response(
-                data={"status": AsrTaskStatus.FINISHED.value, "result": result},
-                message="Transcription completed",
-            )
-
-        elif code in [
-            VolcengineASRResponseStatusCode.PENDING.value,
-            VolcengineASRResponseStatusCode.RUNNING.value,
-        ]:
-            logger.info(f"Transcription task {task_id} is still running")
-
+        task = ASR_TASKS[task_id]
+        if task["status"] == AsrTaskStatus.RUNNING.value:
             return success_response(
                 data={"status": AsrTaskStatus.RUNNING.value, "result": None},
                 message="Transcription in progress",
             )
-        else:
-            logger.error(f"Transcription task {task_id} failed with code: {code}")
 
+        if task["status"] == AsrTaskStatus.FAILED.value:
             return success_response(
                 data={"status": AsrTaskStatus.FAILED.value, "result": None},
-                message="Transcription failed",
+                message=task["error"] or "Transcription failed",
             )
 
-    except requests.RequestException as e:
-        logger.error(
-            f"Request failed when querying transcription task {task_id}: {str(e)}"
+        return success_response(
+            data={
+                "status": AsrTaskStatus.FINISHED.value,
+                "result": [
+                    {"start_time": 0, "end_time": 0, "text": task["text"]}
+                ],
+            },
+            message="Transcription completed",
         )
-        raise ExternalServiceException(
-            "Volcengine ASR", f"Query request failed: {str(e)}"
-        )
+
     except Exception as e:
         logger.error(
             f"Unexpected error when querying transcription task {task_id}: {str(e)}"

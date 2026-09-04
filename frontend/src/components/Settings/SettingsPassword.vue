@@ -1,17 +1,17 @@
 <template>
     <div class="password-settings">
-        <h3 class="password-title">Web 访问密码</h3>
+        <h3 class="password-title">{{ t('settingsPanel.passwordTitle') }}</h3>
         <div class="password-tip">
-            如果服务端配置了访问密码，请在此输入。留空表示不使用密码。
+            {{ t('settingsPanel.passwordTip') }}
         </div>
         <div class="password-form-row">
-            <label class="password-label" for="web-access-password">访问密码：</label>
-            <el-input id="web-access-password" v-model="webAccessPassword" type="password" placeholder="请输入 Web 访问密码"
+            <label class="password-label" for="web-access-password">{{ t('settingsPanel.passwordLabel') }}</label>
+            <el-input id="web-access-password" v-model="webAccessPassword" type="password" :placeholder="t('settingsPanel.passwordPlaceholder')"
                 class="password-input" show-password clearable />
         </div>
         <div class="save-btn-row password-save-btn-row">
-            <el-button type="primary" @click="savePassword">保存</el-button>
-            <span v-if="passwordSaveSuccess" class="save-success-msg">已保存！</span>
+            <el-button type="primary" @click="savePassword">{{ t('common.save') }}</el-button>
+            <span v-if="passwordSaveSuccess" class="save-success-msg">{{ t('settingsPanel.savedBang') }}</span>
         </div>
     </div>
 </template>
@@ -19,6 +19,9 @@
 <script setup>
 import { ref } from 'vue'
 import { ElInput, ElButton, ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 function getLocalPassword() {
     try {
@@ -40,7 +43,7 @@ const passwordSaveSuccess = ref(false)
 function savePassword() {
     setLocalPassword(webAccessPassword.value)
     passwordSaveSuccess.value = true
-    ElMessage.success('密码已保存到本地')
+    ElMessage.success(t('settingsPanel.passwordSaved'))
     setTimeout(() => {
         passwordSaveSuccess.value = false
     }, 2000)

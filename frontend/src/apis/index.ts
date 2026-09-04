@@ -4,6 +4,8 @@ import * as uploadService from './uploadService'
 import * as chatService from './chatService'
 import * as healthService from './healthService'
 import * as secretsService from './secretsService' // 新增
+import * as linkService from './linkService'
+import * as translationService from './translationService'
 import httpService from './http'
 
 // 从各个服务中导出常用函数
@@ -13,6 +15,8 @@ export const { getAudioUploadUrl, uploadFile } = uploadService
 export const { sendChatMessage } = chatService
 export const { checkHealth } = healthService
 export const { getSecrets } = secretsService // 新增
+export const { submitLinkTask } = linkService
+export const { translateText, getTargetLanguage, setTargetLanguage, TARGET_LANGUAGES } = translationService
 
 // 导出所有服务
 export {
@@ -22,6 +26,8 @@ export {
   chatService,
   healthService,
   secretsService, // 新增
+  linkService,
+  translationService,
   httpService
 }
 
@@ -36,5 +42,7 @@ export default {
   chat: chatService,
   health: healthService,
   secrets: secretsService, // 新增
+  link: linkService,
+  translation: translationService,
   http: httpService
 }

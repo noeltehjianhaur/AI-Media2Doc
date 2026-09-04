@@ -4,6 +4,9 @@ import { ElButton, ElInput, ElMessage, ElAvatar } from 'element-plus'
 import { Close, Monitor, User, Loading } from '@element-plus/icons-vue'
 import { sendChatMessage } from '../../apis/chatService'
 import MarkdownIt from 'markdown-it'
+import { useI18n } from 'vue-i18n'
+
+const { t: tr } = useI18n()
 
 const props = defineProps({
   task: {
@@ -88,7 +91,7 @@ const handleSend = async () => {
     })
 
   } catch (error) {
-    ElMessage.error('发送消息失败：' + error.message)
+    ElMessage.error(tr('chat.sendFailed') + error.message)
   } finally {
     loading.value = false
     isThinking.value = false
@@ -106,7 +109,7 @@ const initChat = async () => {
       content: response.content
     })
   } catch (error) {
-    ElMessage.error('初始化聊天失败：' + error.message)
+    ElMessage.error(tr('chat.initFailed') + error.message)
   } finally {
     loading.value = false
   }
@@ -132,8 +135,8 @@ onMounted(() => {
           <el-avatar :src="'/src/assets/system.jpg'" :size="40" />
         </div>
         <div class="header-title">
-          <h3>AI 智能助手</h3>
-          <p>基于视频内容，向我提问吧</p>
+          <h3>{{ tr('chat.title') }}</h3>
+          <p>{{ tr('chat.subtitle') }}</p>
         </div>
       </div>
       <el-button v-if="!embedded" class="close-btn" @click="$emit('close')">
@@ -156,8 +159,8 @@ onMounted(() => {
             <!-- 用户消息仍然显示为纯文本 -->
             <template v-else>{{ msg.content }}</template>
           </div>
-          <div class="message-time" v-if="msg.role === 'assistant'">AI 助手</div>
-          <div class="message-time" v-else>我</div>
+          <div class="message-time" v-if="msg.role === 'assistant'">{{ tr('chat.assistant') }}</div>
+          <div class="message-time" v-else>{{ tr('chat.me') }}</div>
         </div>
       </div>
 
@@ -173,14 +176,14 @@ onMounted(() => {
               <span></span>
             </div>
           </div>
-          <div class="message-time">AI 思考中</div>
+          <div class="message-time">{{ tr('chat.thinking') }}</div>
         </div>
       </div>
     </div>
 
     <div class="chat-input">
       <div class="input-container">
-        <el-input v-model="message" type="textarea" :rows="3" :placeholder="loading ? '请等待AI回复...' : '输入您的问题...'"
+        <el-input v-model="message" type="textarea" :rows="3" :placeholder="loading ? tr('chat.waitReply') : tr('chat.inputPlaceholder')"
           @keyup.enter.exact="handleSend" :disabled="loading" resize="none" />
         <div class="send-button-wrapper">
           <el-button class="send-button" type="primary" @click="handleSend" :disabled="!message.trim() || loading"

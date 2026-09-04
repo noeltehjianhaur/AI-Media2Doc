@@ -4,7 +4,10 @@ import { ElMenu, ElMenuItem, ElAvatar, ElTag, ElIcon, ElEmpty, ElMessage, ElMess
 import { VideoCameraFilled, Tickets, Document, Plus, ArrowRight, Delete } from '@element-plus/icons-vue'
 import { getAllTasks, deleteTask } from '../utils/db'
 import { eventBus } from '../utils/eventBus'
+import { useI18n } from 'vue-i18n'
 import Settings from './Settings/Settings.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
     activeMenu: {
@@ -39,12 +42,12 @@ const isInitialLoad = ref(true)
 const showSettingsDialog = ref(false)
 
 const styleList = [
-    { label: 'note', name: '知识笔记', icon: new URL('../assets/笔记.svg', import.meta.url).href },
-    { label: 'xiaohongshu', name: '小红书', icon: new URL('../assets/小红书.svg', import.meta.url).href },
-    { label: 'wechat', name: '公众号', icon: new URL('../assets/微信.svg', import.meta.url).href },
-    { label: 'summary', name: '内容总结', icon: new URL('../assets/汇总.svg', import.meta.url).href },
-    { label: 'mind', name: '思维导图', icon: new URL('../assets/思维导图.svg', import.meta.url).href },
-    { label: 'cc', name: '字幕文件', icon: new URL('../assets/字幕.svg', import.meta.url).href },
+    { label: 'note', name: 'styles.note', icon: new URL('../assets/笔记.svg', import.meta.url).href },
+    { label: 'xiaohongshu', name: 'styles.xiaohongshu', icon: new URL('../assets/小红书.svg', import.meta.url).href },
+    { label: 'wechat', name: 'styles.wechat', icon: new URL('../assets/微信.svg', import.meta.url).href },
+    { label: 'summary', name: 'styles.summary', icon: new URL('../assets/汇总.svg', import.meta.url).href },
+    { label: 'mind', name: 'styles.mind', icon: new URL('../assets/思维导图.svg', import.meta.url).href },
+    { label: 'cc', name: 'styles.cc', icon: new URL('../assets/字幕.svg', import.meta.url).href },
 ]
 
 const getStyleIcon = (style) => {
@@ -52,16 +55,19 @@ const getStyleIcon = (style) => {
     return item ? item.icon : ''
 }
 
-const styleMap = {
-    note: { name: '知识笔记', color: '#409EFF' }, // 蓝色
-    summary: { name: '内容总结', color: '#67C23A' }, // 绿色
-    xiaohongshu: { name: '小红书风格', color: '#FE2C55' }, // 红色
-    wechat: { name: '公众号风格', color: '#07C160' }, // 微信绿
-    mind: { name: '思维导图', color: '#8E93F2' } // 紫色
+const styleColorMap = {
+    note: '#409EFF',
+    summary: '#67C23A',
+    xiaohongshu: '#FE2C55',
+    wechat: '#07C160',
+    mind: '#8E93F2',
+    cc: '#909399'
 }
 
 const getStyleInfo = (style) => {
-    return styleMap[style] || { name: style || '未知类型', color: '#909399' }
+    const color = styleColorMap[style]
+    if (!color) return { name: style || t('app.unknownStyle'), color: '#909399' }
+    return { name: t(`styles.${style}`), color }
 }
 
 const loadRecentTasks = async () => {
@@ -77,11 +83,10 @@ const loadRecentTasks = async () => {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
     } catch (error) {
-        console.error('加载历史任务失败:', error)
-        ElMessage.error('加载历史任务失败')
+        console.error('Failed to load task history:', error)
+        ElMessage.error(t('app.loadHistoryFailed'))
     } finally {
         isTasksLoading.value = false
-        console.log('加载历史任务完成')
     }
 }
 
@@ -121,13 +126,12 @@ const handleDeleteTask = async (event, task) => {
 
     try {
         await ElMessageBox.confirm(
-            '确定要删除此任务记录吗？此操作不可撤销。',
-            '删除确认',
+            t('app.deleteTaskConfirm'),
+            t('app.deleteTaskTitle'),
             {
-                confirmButtonText: '确定删除',
-                cancelButtonText: '取消',
+                confirmButtonText: t('common.delete'),
+                cancelButtonText: t('common.cancel'),
                 type: 'warning',
-                // confirmButtonClass: 'el-button--danger el-button--borderless'
             }
         );
 
@@ -135,13 +139,13 @@ const handleDeleteTask = async (event, task) => {
 
         recentTasks.value = recentTasks.value.filter(t => t.id !== task.id);
 
-        ElMessage.success('已删除任务记录');
+        ElMessage.success(t('app.deleted'));
 
         eventBus.emit('task-updated');
     } catch (error) {
         if (error !== 'cancel') {
-            console.error('删除任务失败:', error);
-            ElMessage.error('删除失败，请重试');
+            console.error('Failed to delete task:', error);
+            ElMessage.error(t('app.deleteFailed'));
         }
     }
 };
@@ -157,7 +161,7 @@ const handleDeleteTask = async (event, task) => {
             </div>
             <div class="app-title">
                 <h3>AI-Media2Doc</h3>
-                <div class="app-subtitle">一键音视频转文档</div>
+                <div class="app-subtitle">{{ t('app.subtitle') }}</div>
             </div>
         </div>
 
@@ -168,7 +172,7 @@ const handleDeleteTask = async (event, task) => {
                     <el-icon class="menu-icon-new">
                         <Plus />
                     </el-icon>
-                    <span>新建任务</span>
+                    <span>{{ t('app.newTask') }}</span>
                 </div>
             </el-menu-item>
 
@@ -179,7 +183,7 @@ const handleDeleteTask = async (event, task) => {
                         <el-icon class="menu-icon">
                             <Tickets />
                         </el-icon>
-                        <span id="historyTaskText">历史任务</span>
+                        <span id="historyTaskText">{{ t('app.history') }}</span>
                     </div>
                     <el-icon class="expand-icon" :class="{ 'is-expanded': showHistoryTasks }">
                         <ArrowRight />
@@ -189,10 +193,10 @@ const handleDeleteTask = async (event, task) => {
                 <!-- 历史任务子菜单 -->
                 <div class="history-submenu" :class="{ 'is-expanded': showHistoryTasks }">
                     <div v-if="isTasksLoading" class="history-loading">
-                        <span>加载中...</span>
+                        <span>{{ t('common.loading') }}</span>
                     </div>
                     <div v-else-if="recentTasks.length === 0" class="history-empty">
-                        <span>暂无历史任务</span>
+                        <span>{{ t('app.emptyHistory') }}</span>
                     </div>
                     <div v-else class="history-list">
                         <div v-for="task in recentTasks" :key="task.id" class="history-item"
@@ -205,7 +209,7 @@ const handleDeleteTask = async (event, task) => {
                                 </el-icon>
                             </div>
                             <div class="history-info">
-                                <div class="history-title">{{ task.fileName || '未命名文件' }}</div>
+                                <div class="history-title">{{ task.fileName || t('app.untitledFile') }}</div>
                                 <div class="history-meta">
                                     <el-tag size="small" effect="plain" :style="{
                                         background: getStyleInfo(task.contentStyle).color + '15' + ' !important',
@@ -245,7 +249,7 @@ const handleDeleteTask = async (event, task) => {
                             </svg>
                         </el-icon>
                     </el-icon>
-                    <span>自定义配置</span>
+                    <span>{{ t('app.settings') }}</span>
                 </div>
             </div>
             <Settings v-model:visible="showSettingsDialog" />
@@ -254,7 +258,7 @@ const handleDeleteTask = async (event, task) => {
         <!-- 底部版权信息 -->
         <div class="sidebar-footer">
             <div class="footer-content">
-                <p>© 2025 AI 视频图文创作助手</p>
+                <p>© 2025 {{ t('app.title') }}</p>
             </div>
         </div>
     </div>

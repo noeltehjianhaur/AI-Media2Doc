@@ -2,13 +2,13 @@
     <div class="mindmap-wrapper" ref="wrapperRef">
         <div id="mindMapContainer" ref="containerRef" class="mind-map-container"></div>
 
-        <el-button type="primary" :icon="FullScreen" circle size="small" title="全屏预览" class="fullscreen-float-btn"
+        <el-button type="primary" :icon="FullScreen" circle size="small" :title="t('result.fullscreen')" class="fullscreen-float-btn"
             @click="openFullscreen" />
 
         <div class="mindmap-tip">
-            点击下载思维导图, 导入到
+            {{ t('result.mindMapTipBefore') }}
             <a href="https://wanglin2.github.io/mind-map/#/" target="_blank">https://wanglin2.github.io/mind-map/#/</a>
-            即可在线编辑
+            {{ t('result.mindMapTipAfter') }}
         </div>
 
         <Teleport to="body">
@@ -21,8 +21,11 @@
 import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import { ElMessage, ElButton } from 'element-plus'
 import { FullScreen } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 import MindMap from 'simple-mind-map'
 import MindMapFullscreen from './MindMapFullscreen.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
     content: { type: String, required: true },
@@ -105,7 +108,7 @@ const initMindMap = async () => {
         mindMapInstance.value.render()
         setTimeout(() => adjustView(), 120)
     } catch {
-        ElMessage.error('思维导图初始化失败')
+        ElMessage.error(t('result.mindMapInitFailed'))
     }
 }
 

@@ -3,34 +3,34 @@
         <div class="style-selector-row">
             <div v-for="item in styleList" :key="item.label" class="style-card"
                 :class="{ active: selectedStyle === item.label }" @click="selectedStyle = item.label">
-                <img :src="item.icon" :alt="item.name" class="style-card-icon" />
-                <span class="style-card-name">{{ item.name }}</span>
+                <img :src="item.icon" :alt="t(item.name)" class="style-card-icon" />
+                <span class="style-card-name">{{ t(item.name) }}</span>
             </div>
         </div>
         <div class="prompt-editor-row">
             <div class="prompt-tip">
-                请勿修改 <code>{content}</code> 以及思维导图的 json 内容，不然可能会导致生成失败。
+                {{ t('settingsPanel.promptTip') }}
             </div>
             <div class="prompt-label-row">
                 <label class="prompt-label">Prompt：</label>
             </div>
             <div class="prompt-action-row">
                 <el-button class="refresh-prompt-btn" size="small" type="info" plain @click="refreshPrompt"
-                    title="刷新最新默认配置">
+                    :title="t('settingsPanel.refreshPrompt')">
                     <el-icon style="vertical-align: middle; margin-right: 3px;">
                         <svg viewBox="0 0 1024 1024" width="16" height="16">
                             <path fill="currentColor"
                                 d="M512 128a384 384 0 1 1-271.6 112.4l-60.8-60.8A448 448 0 1 0 960 512h-64a384 384 0 0 1-384 384A384 384 0 0 1 128 512c0-106.1 41.4-205.8 116.6-281l-60.8-60.8A448 448 0 1 0 960 512h-64A384 384 0 0 1 512 128z" />
                         </svg>
                     </el-icon>
-                    刷新最新默认配置
+                    {{ t('settingsPanel.refreshPrompt') }}
                 </el-button>
             </div>
             <el-input v-model="currentPrompt" type="textarea" :rows="8" resize="vertical" class="prompt-textarea" />
         </div>
         <div class="save-btn-row">
-            <el-button type="primary" @click="savePrompt">保存</el-button>
-            <span v-if="saveSuccess" class="save-success-msg">已保存！</span>
+            <el-button type="primary" @click="savePrompt">{{ t('common.save') }}</el-button>
+            <span v-if="saveSuccess" class="save-success-msg">{{ t('settingsPanel.savedBang') }}</span>
         </div>
     </div>
 </template>
@@ -38,14 +38,17 @@
 <script setup>
 import { ref, reactive, watch } from 'vue'
 import { ElButton, ElInput, ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { DEFAULT_PROMPTS } from '../../constants'
 
 const styleList = [
-    { label: 'note', name: '知识笔记', icon: new URL('../../assets/笔记.svg', import.meta.url).href },
-    { label: 'xiaohongshu', name: '小红书', icon: new URL('../../assets/小红书.svg', import.meta.url).href },
-    { label: 'wechat', name: '公众号', icon: new URL('../../assets/微信公众号.svg', import.meta.url).href },
-    { label: 'summary', name: '内容总结', icon: new URL('../../assets/汇总.svg', import.meta.url).href },
-    { label: 'mind', name: '思维导图', icon: new URL('../../assets/思维导图.svg', import.meta.url).href },
+    { label: 'note', name: 'styles.note', icon: new URL('../../assets/笔记.svg', import.meta.url).href },
+    { label: 'xiaohongshu', name: 'styles.xiaohongshu', icon: new URL('../../assets/小红书.svg', import.meta.url).href },
+    { label: 'wechat', name: 'styles.wechat', icon: new URL('../../assets/微信公众号.svg', import.meta.url).href },
+    { label: 'summary', name: 'styles.summary', icon: new URL('../../assets/汇总.svg', import.meta.url).href },
+    { label: 'mind', name: 'styles.mind', icon: new URL('../../assets/思维导图.svg', import.meta.url).href },
 ]
 
 function getLocalPrompts() {
@@ -73,7 +76,7 @@ function savePrompt() {
     prompts[selectedStyle.value] = currentPrompt.value
     setLocalPrompts(prompts)
     saveSuccess.value = true
-    ElMessage.success('已保存到本地')
+    ElMessage.success(t('settingsPanel.savedLocally'))
 }
 
 function refreshPrompt() {
@@ -83,9 +86,9 @@ function refreshPrompt() {
         prompts[style] = DEFAULT_PROMPTS[style]
         setLocalPrompts(prompts)
         saveSuccess.value = false
-        ElMessage.success('已刷新为最新默认配置')
+        ElMessage.success(t('settingsPanel.promptRefreshed'))
     } else {
-        ElMessage.warning('未找到该风格的默认配置')
+        ElMessage.warning(t('settingsPanel.promptNotFound'))
     }
 }
 </script>

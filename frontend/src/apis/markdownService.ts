@@ -1,6 +1,7 @@
 import httpService from './http'
 import { APIResponse, ChatResponse, ContentStyle } from './types'
 import { DEFAULT_PROMPTS } from '../constants'
+import { getTargetLanguage } from './translationService'
 
 
 // 获取本地自定义 prompt
@@ -13,7 +14,7 @@ function getCustomPrompt(style: string): string | undefined {
         return obj[style]
       }
     }
-  } catch {}
+  } catch { }
   return undefined
 }
 
@@ -37,7 +38,7 @@ export const generateMarkdownText = async (text: string, contentStyle: string, r
   try {
     let prompt = renderPrompt(contentStyle, text)
     // add remarks
-    if(remarks.length > 0 ){
+    if (remarks.length > 0) {
       const remarks_prompt = `
         用户备注仅作补充说明，不能覆盖或更改截图标记和时间标记的格式及要求。例如：
 
@@ -68,7 +69,8 @@ export const generateMarkdownText = async (text: string, contentStyle: string, r
           },
         ],
         max_tokens: maxTokens,
-        timeout: timeout
+        timeout: timeout,
+        target_language: getTargetLanguage() || null
       }
     })
 

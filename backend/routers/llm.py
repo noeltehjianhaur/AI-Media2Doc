@@ -5,16 +5,14 @@ from openai import APIError, OpenAI
 
 import env
 from core.response import success_response, APIResponse
-from models import ChatRequest
+from models import ChatRequest, TranslationRequest
 
 router = APIRouter(prefix="/llm", tags=["LLM"])
 
 
 def create_completion(messages, timeout, max_tokens=None):
-    """Try configured providers in order: Ark, Gemini, then OpenRouter."""
-    providers = [
-        ("Volcengine Ark", env.LLM_BASE_URL, env.LLM_API_KEY, env.LLM_MODEL_ID),
-    ]
+    """Try configured providers in order: Gemini, then OpenRouter."""
+    providers = []
     if all([env.GEMINI_BASE_URL, env.GEMINI_API_KEY, env.GEMINI_MODEL_ID]):
         providers.append(
             (
@@ -82,6 +80,18 @@ async def generate_markdown_text(request: ChatRequest):
         for message in request.messages
     ]
 
+    if request.target_language:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"Write the entire response in {request.target_language}. "
+                    "Keep the same Markdown structure, headings, timestamps and "
+                    "screenshot markers."
+                ),
+            }
+        )
+
     response = create_completion(
         messages,
         timeout=request.timeout,
@@ -91,4 +101,31 @@ async def generate_markdown_text(request: ChatRequest):
     return success_response(
         data={"choices": [choices.model_dump() for choices in response.choices]},
         message="Chat completed successfully",
+    )
+
+
+@router.post("/translation", response_model=APIResponse)
+async def translate_text(request: TranslationRequest):
+    """将转写文本翻译为目标语言"""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                f"Translate the user's transcript into {request.target_language}. "
+                "Preserve line breaks and ordering. Return only the translated text "
+                "without commentary."
+            ),
+        },
+        {"role": "user", "content": request.text},
+    ]
+
+    response = create_completion(
+        messages,
+        timeout=request.timeout,
+        max_tokens=request.max_tokens,
+    )
+
+    return success_response(
+        data={"text": response.choices[0].message.content or ""},
+        message="Translation completed successfully",
     )

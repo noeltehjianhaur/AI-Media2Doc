@@ -1,5 +1,8 @@
 <script setup>
 import { Check, CircleCloseFilled, Promotion, Headset, Upload, Document, Connection } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineProps({
   steps: {
@@ -26,10 +29,10 @@ const iconMap = {
       <el-icon>
         <Connection />
       </el-icon>
-      处理进度
+      {{ t('steps.progress') }}
     </h3>
     <el-steps :active="activeStep" finish-status="success" class="custom-steps" align-center>
-      <el-step v-for="(step, index) in steps" :key="index" :title="step.title">
+      <el-step v-for="(step, index) in steps" :key="index" :title="step.titleKey ? t(step.titleKey) : step.title">
         <template #icon>
           <div class="step-icon-wrapper" :class="{
             'processing': step.status === 'processing',

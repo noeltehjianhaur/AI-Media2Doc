@@ -1,8 +1,11 @@
 <script setup>
-import { ElUpload, ElIcon, ElMessage, ElRadioGroup, ElRadioButton, ElInput, ElInputNumber, ElCollapse, ElCollapseItem, ElTooltip } from 'element-plus'
-import { UploadFilled, VideoCamera, Promotion, RefreshRight, Loading, Setting } from '@element-plus/icons-vue'
-import { ref, watch } from 'vue'
+import { ElUpload, ElIcon, ElMessage, ElRadioGroup, ElRadioButton, ElInput, ElInputNumber, ElCollapse, ElCollapseItem, ElTooltip, ElButton } from 'element-plus'
+import { UploadFilled, VideoCamera, Promotion, RefreshRight, Loading, Setting, Link } from '@element-plus/icons-vue'
+import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import RemarksInput from '../common/RemarksInput.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   ffmpegLoading: {
@@ -15,7 +18,7 @@ const props = defineProps({
   },
   acceptHint: {
     type: String,
-    default: '上传视频或Mp3音频'
+    default: ''
   },
   file: Object,
   fileName: String,
@@ -39,10 +42,26 @@ const props = defineProps({
   maxTokens: {
     type: Number,
     default: 8192
+  },
+  linkUrl: {
+    type: String,
+    default: ''
   }
 })
 
-const emit = defineEmits(['file-selected', 'update:style', 'update:remarks', 'update:timeout', 'update:maxTokens', 'start-process', 'reset'])
+const emit = defineEmits(['file-selected', 'link-submitted', 'update:style', 'update:remarks', 'update:timeout', 'update:maxTokens', 'start-process', 'reset'])
+
+const hasSource = computed(() => !!props.file || !!props.linkUrl)
+const linkInput = ref('')
+
+const handleLinkSubmit = () => {
+  const url = linkInput.value.trim()
+  if (!/^https?:\/\//i.test(url)) {
+    ElMessage.error(t('upload.invalidLink'))
+    return
+  }
+  emit('link-submitted', url)
+}
 
 const allowedTypes = [
   'video/mp4',
@@ -69,12 +88,12 @@ const handleFileChange = (file) => {
   const isAllowedType = allowedTypes.includes(file.raw.type) ||
     file.raw.name.toLowerCase().endsWith('.mp3');
   if (!isAllowedType) {
-    ElMessage.error('只支持上传视频文件（MP4、MOV、AVI、MKV、WebM）或MP3音频文件')
+    ElMessage.error(t('upload.unsupportedType'))
     return false
   }
   const maxSize = getLocalMaxUploadSize() * 1024 * 1024
   if (file.raw.size > maxSize) {
-    ElMessage.error(`文件大小不能超过 ${getLocalMaxUploadSize()}MB`)
+    ElMessage.error(t('upload.tooLarge', { size: getLocalMaxUploadSize() }))
     return false
   }
   emit('file-selected', file.raw)
@@ -82,12 +101,12 @@ const handleFileChange = (file) => {
 
 // 支持风格类型及图标
 const styleList = [
-  { label: 'note', name: '知识笔记', icon: new URL('../../assets/笔记.svg', import.meta.url).href },
-  { label: 'xiaohongshu', name: '小红书', icon: new URL('../../assets/小红书.svg', import.meta.url).href },
-  { label: 'wechat', name: '公众号', icon: new URL('../../assets/微信公众号.svg', import.meta.url).href },
-  { label: 'summary', name: '内容总结', icon: new URL('../../assets/汇总.svg', import.meta.url).href },
-  { label: 'mind', name: '思维导图', icon: new URL('../../assets/思维导图.svg', import.meta.url).href },
-  { label: 'cc', name: '字幕文件', icon: new URL('../../assets/字幕.svg', import.meta.url).href },
+  { label: 'note', name: 'styles.note', icon: new URL('../../assets/笔记.svg', import.meta.url).href },
+  { label: 'xiaohongshu', name: 'styles.xiaohongshu', icon: new URL('../../assets/小红书.svg', import.meta.url).href },
+  { label: 'wechat', name: 'styles.wechat', icon: new URL('../../assets/微信公众号.svg', import.meta.url).href },
+  { label: 'summary', name: 'styles.summary', icon: new URL('../../assets/汇总.svg', import.meta.url).href },
+  { label: 'mind', name: 'styles.mind', icon: new URL('../../assets/思维导图.svg', import.meta.url).href },
+  { label: 'cc', name: 'styles.cc', icon: new URL('../../assets/字幕.svg', import.meta.url).href },
 ]
 
 const localStyle = ref(props.style || '')
@@ -127,26 +146,26 @@ const handleMaxTokensChange = (val) => {
   <div class="upload-section-outer">
     <div class="upload-section" :class="{ 'loading-state': ffmpegLoading }">
       <div class="welcome">
-        <div class="welcome-title">你好，我是 <span class="ai-highlight">AI 图文创作助手</span></div>
-        <div class="welcome-desc">上传你的视频或MP3音频，我会帮你自动转写并生成多种风格的图文内容。</div>
+        <div class="welcome-title">{{ t('upload.greeting', { name: '' }) }}<span class="ai-highlight">{{ t('upload.aiName') }}</span></div>
+        <div class="welcome-desc">{{ t('upload.description') }}</div>
       </div>
-      <!-- 仅在未上传文件时显示风格支持列表和acceptHint -->
-      <div v-if="!props.file">
+      <!-- 仅在未选择来源时显示风格支持列表和apacceptHint -->
+      <div v-if="!hasSource">
         <div class="style-support-list">
           <div class="style-support-item" v-for="item in styleList" :key="item.label">
-            <img :src="item.icon" :alt="item.name" class="style-support-icon" />
-            <span class="style-support-name">{{ item.name }}</span>
+            <img :src="item.icon" :alt="t(item.name)" class="style-support-icon" />
+            <span class="style-support-name">{{ t(item.name) }}</span>
           </div>
         </div>
         <h3 class="section-title">
           <el-icon>
             <VideoCamera />
           </el-icon>
-          {{ acceptHint }}
+          {{ acceptHint || t('upload.acceptHint') }}
         </h3>
       </div>
-      <!-- 上传区域：仅在未上传文件时显示 -->
-      <el-upload v-if="!props.file" class="uploader" drag action="" :auto-upload="false" :on-change="handleFileChange"
+      <!-- 上传区域：仅在未选择来源时显示 -->
+      <el-upload v-if="!hasSource" class="uploader" drag action="" :auto-upload="false" :on-change="handleFileChange"
         :disabled="ffmpegLoading || isProcessing" :accept="allowedTypes.join(',') + ',.mp3'">
         <div class="upload-content">
           <div class="upload-icon-wrapper">
@@ -155,45 +174,67 @@ const handleMaxTokensChange = (val) => {
             </el-icon>
           </div>
           <h3 class="upload-title">
-            {{ ffmpegLoading ? '正在加载 ffmpeg，请稍候...' : '开始上传' }}
+            {{ ffmpegLoading ? t('upload.ffmpegLoading') : t('upload.start') }}
           </h3>
           <p class="upload-desc" v-if="!ffmpegLoading">
-            支持拖放或点击上传视频或MP3文件<br>
-            <span class="upload-formats">支持格式：MP4、MOV、AVI、MKV、WebM、MP3，当前设置最大值为 {{ getLocalMaxUploadSize() }}MB</span>
-            <el-tooltip content="可以在自定义设置中调整大小。" placement="top" effect="dark">
+            {{ t('upload.dropHint') }}<br>
+            <span class="upload-formats">{{ t('upload.formats', { size: getLocalMaxUploadSize() }) }}</span>
+            <el-tooltip :content="t('upload.sizeTip')" placement="top" effect="dark">
               <span class="size-tip-hint">?</span>
             </el-tooltip>
           </p>
         </div>
       </el-upload>
+      <!-- 视频链接输入：仅在未选择来源时显示 -->
+      <div v-if="!hasSource" class="link-input-section">
+        <div class="link-input-divider"><span>{{ t('upload.orPasteLink') }}</span></div>
+        <div class="link-input-row">
+          <el-input v-model="linkInput" :disabled="isProcessing" clearable
+            :placeholder="t('upload.linkPlaceholder')" @keyup.enter="handleLinkSubmit">
+            <template #prefix>
+              <el-icon>
+                <Link />
+              </el-icon>
+            </template>
+          </el-input>
+          <el-button type="primary" :disabled="isProcessing || !linkInput" @click="handleLinkSubmit">{{ t('upload.parseLink') }}</el-button>
+        </div>
+        <p class="link-input-tip">{{ t('upload.linkTip') }}</p>
+      </div>
       <!-- 文件信息和风格选择：上传后显示 -->
       <div v-else class="file-info-section">
         <div class="file-info-card">
-          <div class="file-info-row">
-            <span class="file-info-label">文件名：</span>
-            <span class="file-info-value">{{ props.fileName }}</span>
+          <div v-if="props.linkUrl" class="file-info-row">
+            <span class="file-info-label">{{ t('upload.videoLink') }}</span>
+            <span class="file-info-value">{{ props.linkUrl }}</span>
           </div>
-          <div class="file-info-row">
-            <span class="file-info-label">文件大小：</span>
-            <span class="file-info-value">{{ (props.fileSize / 1024 / 1024).toFixed(2) }} MB</span>
-          </div>
-          <div class="file-info-row">
-            <span class="file-info-label">文件MD5：</span>
-            <span class="file-info-value file-info-md5">
-              <template v-if="props.md5Calculating">
-                <el-icon class="md5-loading-icon">
-                  <Loading />
-                </el-icon>
-                正在计算 MD5
-                <span class="md5-loading-dots">
-                  <span>.</span><span>.</span><span>.</span>
-                </span>
-              </template>
-              <template v-else>
-                {{ props.fileMd5 }}
-              </template>
-            </span>
-          </div>
+          <template v-else>
+            <div class="file-info-row">
+              <span class="file-info-label">{{ t('upload.fileName') }}</span>
+              <span class="file-info-value">{{ props.fileName }}</span>
+            </div>
+            <div class="file-info-row">
+              <span class="file-info-label">{{ t('upload.fileSize') }}</span>
+              <span class="file-info-value">{{ (props.fileSize / 1024 / 1024).toFixed(2) }} MB</span>
+            </div>
+            <div class="file-info-row">
+              <span class="file-info-label">{{ t('upload.fileMd5') }}</span>
+              <span class="file-info-value file-info-md5">
+                <template v-if="props.md5Calculating">
+                  <el-icon class="md5-loading-icon">
+                    <Loading />
+                  </el-icon>
+                  {{ t('upload.calculatingMd5') }}
+                  <span class="md5-loading-dots">
+                    <span>.</span><span>.</span><span>.</span>
+                  </span>
+                </template>
+                <template v-else>
+                  {{ props.fileMd5 }}
+                </template>
+              </span>
+            </div>
+          </template>
         </div>
         <div class="file-info-main">
           <div class="style-selector-wrapper style-selector-flex">
@@ -201,21 +242,21 @@ const handleMaxTokensChange = (val) => {
               class="style-radio-group-flex">
               <el-radio-button v-for="item in styleList" :key="item.label" :value="item.label"
                 class="style-radio-btn-flex" :disabled="item.label === 'cc'">
-                <img :src="item.icon" :alt="item.name" class="style-radio-icon" />
-                {{ item.name }}
+                <img :src="item.icon" :alt="t(item.name)" class="style-radio-icon" />
+                {{ t(item.name) }}
               </el-radio-button>
             </el-radio-group>
           </div>
           <RemarksInput v-model="localRemarks" :timeout="localTimeout" :max-tokens="localMaxTokens"
             :disabled="isProcessing" @update:modelValue="handleRemarksChange" @update:timeout="handleTimeoutChange"
-            @update:maxTokens="handleMaxTokensChange" placeholder="你可以添加备注在默认提示词的基础上实现更加个性化的输出, 例如: 输出更详细一些" />
+            @update:maxTokens="handleMaxTokensChange" :placeholder="t('upload.remarksPlaceholder')" />
         </div>
         <div class="file-action-row">
           <el-button class="start-process-btn" :disabled="!localStyle || isProcessing" @click="handleStart">
             <el-icon class="plane-icon">
               <Promotion />
             </el-icon>
-            开始处理
+            {{ t('upload.startProcess') }}
           </el-button>
         </div>
         <!-- 右下角悬浮的重新选择文件按钮 -->
@@ -223,7 +264,7 @@ const handleMaxTokensChange = (val) => {
           <el-icon class="reset-icon">
             <RefreshRight />
           </el-icon>
-          重新选择文件
+          {{ t('upload.reselect') }}
         </a>
       </div>
     </div>
@@ -231,6 +272,42 @@ const handleMaxTokensChange = (val) => {
 </template>
 
 <style scoped>
+.link-input-section {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.link-input-divider {
+  display: flex;
+  align-items: center;
+  color: #9ca3af;
+  font-size: 0.92rem;
+  margin-bottom: 12px;
+}
+
+.link-input-divider::before,
+.link-input-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.link-input-divider span {
+  padding: 0 12px;
+}
+
+.link-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.link-input-tip {
+  margin: 8px 0 0 0;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
 .upload-section-outer {
   min-height: 70vh;
   display: flex;

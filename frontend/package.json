@@ -24,7 +24,8 @@
     "multer": "^1.4.5-lts.1",
     "simple-mind-map": "^0.13.1-fix.2",
     "spark-md5": "^3.0.2",
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "vue-i18n": "^9.14.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",

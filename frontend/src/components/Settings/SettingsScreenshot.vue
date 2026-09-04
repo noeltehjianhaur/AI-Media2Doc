@@ -1,12 +1,12 @@
 <template>
     <div class="screenshot-settings">
-        <h3 class="screenshot-title">智能截图设置</h3>
+        <h3 class="screenshot-title">{{ t('settingsPanel.screenshotTitle') }}</h3>
         <div class="screenshot-tip">
-            智能截图功能可以自动为生成的内容添加相关图片，提升视觉效果。
+            {{ t('settingsPanel.screenshotTip') }}
         </div>
         <div class="screenshot-form-row">
-            <label class="screenshot-label">启用智能截图：</label>
-            <el-switch v-model="smartScreenshotEnabled" size="default" active-text="开启" inactive-text="关闭"
+            <label class="screenshot-label">{{ t('settingsPanel.screenshotLabel') }}</label>
+            <el-switch v-model="smartScreenshotEnabled" size="default" :active-text="t('settingsPanel.on')" :inactive-text="t('settingsPanel.off')"
                 class="screenshot-switch" />
         </div>
         <transition name="fade-slide">
@@ -18,12 +18,12 @@
                         </path>
                     </svg>
                 </el-icon>
-                <span class="screenshot-warn-tip-text">开启之后生成图文等待时间会变长，仅支持一小时内的视频, 请谨慎开启</span>
+                <span class="screenshot-warn-tip-text">{{ t('settingsPanel.screenshotWarning') }}</span>
             </div>
         </transition>
         <div class="save-btn-row screenshot-save-btn-row">
-            <el-button type="primary" @click="saveScreenshotSettings">保存</el-button>
-            <span v-if="screenshotSaveSuccess" class="save-success-msg">已保存！</span>
+            <el-button type="primary" @click="saveScreenshotSettings">{{ t('common.save') }}</el-button>
+            <span v-if="screenshotSaveSuccess" class="save-success-msg">{{ t('settingsPanel.savedBang') }}</span>
         </div>
     </div>
 </template>
@@ -31,6 +31,9 @@
 <script setup>
 import { ref } from 'vue'
 import { ElSwitch, ElButton, ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 function getLocalSmartScreenshot() {
     try {
@@ -49,7 +52,7 @@ const screenshotSaveSuccess = ref(false)
 function saveScreenshotSettings() {
     setLocalSmartScreenshot(smartScreenshotEnabled.value)
     screenshotSaveSuccess.value = true
-    ElMessage.success('智能截图设置已保存到本地')
+    ElMessage.success(t('settingsPanel.screenshotSaved'))
     setTimeout(() => {
         screenshotSaveSuccess.value = false
     }, 2000)

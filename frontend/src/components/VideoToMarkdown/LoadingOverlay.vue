@@ -3,7 +3,7 @@
         <div class="lottie-container">
             <LottieAnimation :animationData="lottieSrc" :width="150" :height="150" :loop="true" :autoplay="true" />
         </div>
-        <div class="main-text">正在智能处理您的内容</div>
+        <div class="main-text">{{ t('result.processing') }}</div>
         <div class="progress-bar-outer" v-if="percent !== undefined && percent !== null">
             <div class="progress-bar-inner" :style="{ width: percent + '%' }"></div>
         </div>
@@ -13,10 +13,10 @@
         </div>
         <!-- 智能截图进度提示 -->
         <div v-if="smartScreenshot && imageTotal > 0" class="smart-screenshot-hint">
-            当前正在智能截图，进度{{ imageCount }}/{{ imageTotal }}，智能截图需要较多时间，请耐心等待
+            {{ t('result.screenshotProgress', { count: imageCount, total: imageTotal }) }}
         </div>
         <div class="sub-text">
-            请勿关闭或者离开此页面
+            {{ t('result.doNotLeave') }}
         </div>
     </div>
 </template>
@@ -24,7 +24,10 @@
 <script setup>
 import { computed } from 'vue'
 import { LottieAnimation } from 'lottie-web-vue'
+import { useI18n } from 'vue-i18n'
 import lottieSrc from '../../assets/lottie/loading.json'
+
+const { t } = useI18n()
 
 const props = defineProps({
     stepText: {
