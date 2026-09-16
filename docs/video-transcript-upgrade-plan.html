@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI-Media2Doc Video Transcript Upgrade Plan</title>
+    <style>
+        :root {
+            --ink: #172033;
+            --muted: #536176;
+            --line: #dbe2ea;
+            --blue: #1267d6;
+            --soft: #eef6ff;
+            --warn: #8a5200;
+            --warn-bg: #fff6e8;
+            --good: #0c6b4e;
+            --good-bg: #eaf8f1;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #f5f8fb;
+            color: var(--ink);
+            font: 15px/1.58 "Segoe UI", Arial, sans-serif;
+        }
+
+        main {
+            max-width: 1080px;
+            margin: 32px auto;
+            padding: 42px 50px;
+            background: #fff;
+            box-shadow: 0 8px 28px #182b4914;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: 0;
+        }
+
+        h2 {
+            margin-top: 38px;
+            padding-top: 10px;
+            border-top: 1px solid var(--line);
+            font-size: 22px;
+        }
+
+        h3 {
+            margin-top: 27px;
+            font-size: 17px;
+        }
+
+        p,
+        li {
+            max-width: 900px;
+        }
+
+        ul,
+        ol {
+            padding-left: 23px;
+        }
+
+        .subtitle,
+        .muted {
+            color: var(--muted);
+        }
+
+        .meta {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .callout {
+            padding: 15px 18px;
+            margin: 18px 0;
+            border-left: 4px solid var(--blue);
+            background: var(--soft);
+        }
+
+        .warning {
+            border-left-color: #e59b22;
+            background: var(--warn-bg);
+        }
+
+        .success {
+            border-left-color: #17936d;
+            background: var(--good-bg);
+        }
+
+        table {
+            width: 100%;
+            margin: 14px 0 22px;
+            border-collapse: collapse;
+            overflow-wrap: anywhere;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--line);
+            padding: 10px 12px;
+            vertical-align: top;
+            text-align: left;
+        }
+
+        th {
+            background: #f0f4f8;
+            font-weight: 650;
+        }
+
+        code {
+            padding: 2px 5px;
+            border-radius: 3px;
+            background: #eef2f6;
+            color: #283b56;
+            font-family: Consolas, monospace;
+            font-size: .91em;
+        }
+
+        pre {
+            overflow: auto;
+            padding: 15px;
+            background: #101a2b;
+            color: #e8f0fa;
+            border-radius: 4px;
+            font: 13px/1.5 Consolas, monospace;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #e7f1ff;
+            color: #0758bd;
+            font-size: 12px;
+            font-weight: 650;
+        }
+
+        @media (max-width:720px) {
+            main {
+                margin: 0;
+                padding: 25px 18px;
+            }
+
+            h1 {
+                font-size: 25px;
+            }
+
+            table {
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Video Transcript Upgrade Plan</h1>
+        <p class="subtitle">Audio and Audio + Video modes, durable GitHub output records, live provider quota and
+            balance telemetry, model fallback, and temporary-media cleanup.</p>
+        <p class="meta">Prepared: 2026-09-07. Status: proposal only. No application source code was modified while
+            preparing this plan.</p>
+
+        <h2>1. Decisions and Scope</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Requirement</th>
+                    <th>Decision</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Existing Audio transcription</td>
+                    <td>Retain unchanged as the default mode: obtain/extract MP3, send audio to ASR, retain local
+                        history and generated summary.</td>
+                </tr>
+                <tr>
+                    <td>New Audio + Video mode</td>
+                    <td>Add an explicit user-selected mode. Gemini receives the original video and analyzes visual
+                        frames plus audio to capture spoken and on-screen information.</td>
+                </tr>
+                <tr>
+                    <td>Output records</td>
+                    <td>Audio mode creates Markdown. Audio + Video creates an HTML record with selected screenshots and
+                        a static SVG flowchart when relevant.</td>
+                </tr>
+                <tr>
+                    <td>GitHub destination</td>
+                    <td>Publish an opt-in output bundle to the private repository
+                        <code>noeltehjianhaur/AI-Media2Doc-Output</code>, one commit per completed record.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Temporary media</td>
+                    <td>Delete R2/Gemini temporary media after successful processing and optional publication. Keep task
+                        text/HTML locally and in GitHub output when publishing is enabled.</td>
+                </tr>
+                <tr>
+                    <td>Provider quota and balance</td>
+                    <td>Retrieve live provider-reported values for Gemini, OpenRouter, and Cloudflare through
+                        server-side API adapters where the provider exposes an authorized endpoint. Refresh on page
+                        load, after transcript completion, and on explicit user request.</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="callout success"><strong>Feasibility:</strong> all requested features are technically feasible.
+            Audio + Video requires the native Gemini SDK/Files API; it cannot be fully implemented through the current
+            OpenAI-compatible chat-completions call alone.</div>
+
+        <h2>2. Current Workflow Baseline</h2>
+        <p>The existing application is intentionally audio-only for transcription. Local uploads use browser ffmpeg to
+            run <code>-map a</code> and create an MP3. Parsed links use <code>yt-dlp</code> with
+            <code>bestaudio/best</code> and ffmpeg MP3 conversion. The backend sends only <code>input_audio</code> to
+            Gemini. The app's current screenshot markers are post-processing decoration, not visual evidence supplied to
+            the transcription model.
+        </p>
+        <p>Existing local history is retained in browser IndexedDB. It stores each task's source name, mode/style,
+            transcript, generated content, and created time. R2 currently stores extracted audio objects, but no
+            automatic deletion runs after a completed task.</p>
+
+        <h2>3. User-facing Transcript Source Modes</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mode</th>
+                    <th>Input handling</th>
+                    <th>Transcript behavior</th>
+                    <th>Persistent output</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="tag">Audio</span></td>
+                    <td>Keep current MP3 extraction for uploaded video, and audio-only yt-dlp flow for links.</td>
+                    <td>Automatic spoken-language detection; transcript contains spoken content. Target-language
+                        translation remains optional.</td>
+                    <td>Markdown <code>.md</code>.</td>
+                </tr>
+                <tr>
+                    <td><span class="tag">Audio + Video</span></td>
+                    <td>Obtain original video; uploaded files go to Gemini Files API. Public YouTube URLs are passed
+                        directly to Gemini when supported. Other links use yt-dlp to obtain video + audio.</td>
+                    <td>Structured, timestamped content with spoken words, on-screen text, tool names, UI actions,
+                        diagrams, and visual context.</td>
+                    <td>HTML <code>.html</code>, plus images and an SVG flowchart only when generated.</td>
+                </tr>
+            </tbody>
+        </table>
+        <p>The mode selector should be a segmented control placed beside the source input. Default:
+            <strong>Audio</strong>. Audio + Video should show estimated duration/size and a notice that it takes longer
+            and consumes more multimodal quota.
+        </p>
+
+        <h2>4. Content-derived Output File Names</h2>
+        <p>Do not use raw upload names, opaque IDs, or a generic title. After transcription, call the selected
+            text-capable model with a constrained naming prompt using the transcript and visual summary. The model
+            returns a short title only; the backend transforms it into a safe file stem.</p>
+        <pre>Requested title: "Building HTML Artifacts with Local Agents"
+Sanitized stem:  building-html-artifacts-local-agents
+Timestamp:       20260907-214530
+
+Audio:           building-html-artifacts-local-agents_20260907-214530.md
+Audio + Video:   building-html-artifacts-local-agents_20260907-214530.html</pre>
+        <p>Filename rules: 6-12 meaningful words; lowercase ASCII slug; remove invalid path characters; collapse
+            repeated dashes; maximum 90 characters before the timestamp; use a short content hash only to resolve
+            collisions. The timestamp is UTC in <code>YYYYMMDD-HHMMSS</code> form.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Source mode</th>
+                    <th>GitHub output location</th>
+                    <th>Record metadata</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Audio</td>
+                    <td><code>records/audio/YYYY/MM/&lt;content-title&gt;_&lt;datetime&gt;.md</code></td>
+                    <td>Title, created UTC, source mode, original upload name, detected language, target language,
+                        style, transcript, generated summary, model/provider usage.</td>
+                </tr>
+                <tr>
+                    <td>Audio + Video</td>
+                    <td><code>records/audio-video/YYYY/MM/&lt;content-title&gt;_&lt;datetime&gt;/index.html</code></td>
+                    <td>Same metadata plus visual transcript, screenshots, diagram, visual-analysis model, and
+                        processing mode.</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="callout"><strong>Source link rule:</strong> write a <code>Source URL</code> row only for a
+            parsed-link task. For uploaded video/audio tasks, omit that row completely; record the original uploaded
+            file name only.</div>
+
+        <h2>5. Audio + Video Processing Design</h2>
+        <ol>
+            <li>Create a task record first; show a durable
+                <code>queued</code>/<code>processing</code>/<code>completed</code>/<code>failed</code> state.
+            </li>
+            <li>For an upload: retain the original video temporarily in R2 or pass it from backend storage into Gemini
+                Files API. Do not discard the existing MP3 route; it remains the Audio-mode route.</li>
+            <li>For a YouTube link: use Gemini's direct public YouTube URL support when available. Avoid yt-dlp
+                full-video download in this case.</li>
+            <li>For Rednote/Facebook/other supported links: yt-dlp downloads video + audio, merges to a temporary
+                compatible video if needed, then passes it to Gemini Files API.</li>
+            <li>Gemini video analysis returns schema-validated JSON: detected language, segments, spoken text, on-screen
+                text, visual actions, important timestamps, and a flowchart specification.</li>
+            <li>Capture only model-selected high-value frames using ffmpeg. Validate the diagram specification, render a
+                static SVG, and render sanitized HTML without model-provided JavaScript.</li>
+            <li>Build/publish the output record if the user opted in; then clean up temporary media.</li>
+        </ol>
+        <p>Use Gemini agentic video processing for long videos and static mode for short clips where full timeline
+            coverage matters. Gemini's published documentation states static mode samples frames at 1 FPS by default,
+            while agentic mode selectively loads timeline data and can use substantially fewer tokens for long-form
+            content.</p>
+
+        <h2>6. HTML Record Format</h2>
+        <p>HTML is appropriate for the XHS-style visual process record in the attached screenshot because it can retain
+            process blocks, figures, captions, tables, and linked media. GitHub will sanitize untrusted HTML, so output
+            must not depend on scripts or embedded Mermaid JavaScript.</p>
+        <ol>
+            <li>Use a conservative, self-contained HTML/CSS template authored by the application.</li>
+            <li>Include title, metadata, executive summary, timestamped transcript, on-screen context callouts,
+                screenshots, captions, static SVG flowchart, and source information when applicable.</li>
+            <li>Store screenshots under an <code>images/</code> directory and use relative paths.</li>
+            <li>Store a <code>manifest.json</code> next to <code>index.html</code> with hashes, models used, usage data,
+                and publication commit SHA.</li>
+            <li>Escape/sanitize all transcript and model text before inserting it into HTML.</li>
+        </ol>
+
+        <h2>7. Live Provider Balance and Quota</h2>
+        <p>Add a Provider Usage panel for Gemini, OpenRouter, and Cloudflare. Each provider card shows its latest
+            provider-reported balance, quota, or usage values, the time retrieved, and a status of
+            <code>available</code>, <code>unsupported</code>, <code>not_configured</code>, or <code>error</code>.
+            A single Refresh button updates all cards; an individual provider failure must not prevent the other cards
+            from updating.
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Provider</th>
+                    <th>Live API source and values</th>
+                    <th>Limitations</th>
+                    <th>Required behavior</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Gemini</td>
+                    <td>Use an authorized Google Cloud Service Usage/Monitoring API when the configured Gemini project
+                        and credentials expose quota limits and current usage. Continue collecting model response token
+                        metadata, selected model, latency, result, and retries for every request.</td>
+                    <td>The Gemini API key alone does not provide a universal endpoint for remaining AI Studio
+                        Free-tier RPM/TPM/RPD. Google Cloud quota metrics vary by project, API, model, region, and
+                        credential permissions.</td>
+                    <td>Attempt the live project-level lookup when Google Cloud telemetry credentials are configured.
+                        Display the returned metric names, limits, usage, and reset/window metadata. Otherwise return
+                        <code>unsupported</code> or <code>not_configured</code> with an AI Studio quota-dashboard link;
+                        never present a configured estimate as a real-time provider value.
+                    </td>
+                </tr>
+                <tr>
+                    <td>OpenRouter</td>
+                    <td>Call the authorized credits endpoint and display total credits, used credits, and computed
+                        remaining credits. Retain native token usage, response cost, and generation statistics for
+                        completed requests.</td>
+                    <td>The credits endpoint requires a server-side OpenRouter management key; an inference key may not
+                        have permission to read account credits.</td>
+                    <td>Use optional <code>OPENROUTER_MANAGEMENT_KEY</code> credentials and return
+                        <code>not_configured</code> when absent. Label values with the currency/unit supplied by
+                        OpenRouter and preserve per-task cost in the usage ledger.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Cloudflare R2</td>
+                    <td>Call Cloudflare's authorized account/R2 analytics API and display available storage bytes,
+                        Class A operations, Class B operations, egress, and the provider's reporting interval. Continue
+                        recording application-observed uploads, downloads, deletes, and object sizes.</td>
+                    <td>Cloudflare analytics can be delayed and is usage rather than a monetary account balance. Exact
+                        invoice totals, plan allowances, and remaining free-tier amounts may not be exposed by the same
+                        API and must not be inferred without current plan limits.</td>
+                    <td>Use server-only account ID and scoped analytics token. Show provider-reported usage separately
+                        from locally measured task bytes and expose the R2 dashboard link as the billing source of
+                        truth.</td>
+                </tr>
+            </tbody>
+        </table>
+        <h3>Refresh lifecycle</h3>
+        <ol>
+            <li>Fetch all three providers once when the web application page loads.</li>
+            <li>Fetch all three providers after a transcript task reaches <code>completed</code>, after final provider
+                usage metadata has been persisted. Do not refresh for every polling response.</li>
+            <li>The Refresh button starts the same fetch on demand, shows an in-progress state, and is disabled while
+                that refresh is running.</li>
+            <li>Prevent duplicate requests when page-load and task-completion triggers overlap. Use a short server-side
+                cache and request coalescing; manual refresh may bypass the cache but must still be rate-limited.</li>
+            <li>Retain the last successful values when a later refresh fails, mark them stale, show the retrieval time,
+                and provide a concise provider-specific error without exposing secrets.</li>
+        </ol>
+        <h3>Backend contract and security</h3>
+        <p>Add <code>GET /api/v1/provider-usage</code> for the normal cached refresh and
+            <code>POST /api/v1/provider-usage/refresh</code> for a rate-limited manual refresh. The response contains a
+            result per provider with <code>status</code>, <code>source</code>, <code>retrieved_at</code>,
+            <code>reporting_period</code>, typed <code>metrics</code>, optional dashboard URL, stale state, and a safe
+            error code. Provider API calls run concurrently with independent timeouts.
+        </p>
+        <p>Usage data is informational and must be labeled <em>provider-reported</em> or <em>locally measured</em>.
+            Estimated values may be shown only in a separately labeled field and never as live balance/quota. Gemini,
+            OpenRouter, and Cloudflare credentials remain server-side, are excluded from logs and API responses, and
+            use the narrowest read-only scopes available.</p>
+
+        <h2>8. Capability-verified Model Rotation</h2>
+        <div class="callout warning"><strong>Do not auto-cycle through every visible Gemini model.</strong> The
+            screenshots show many models with zero available quota or unrelated capabilities (image generation, TTS,
+            music, agents). A model shown in AI Studio is not automatically appropriate, enabled, free, or compatible
+            with the task.</div>
+        <p>The screenshot shows your active Free-tier <code>gemini-3.6-flash</code> at <strong>4 / 5 RPM</strong> and
+            <strong>6.7K / 250K TPM</strong>. Therefore, an immediate fifth concurrent request may be allowed but a
+            sixth in the same minute should wait or be routed according to the configured policy. The RPD number is not
+            legible in the supplied screenshot and must be treated as account-specific.
+        </p>
+        <p>Create a versioned, server-side capability manifest. Each candidate must declare: enabled status,
+            stable/preview status, supported input modalities, Files API/video support, structured-output support,
+            region eligibility, configured quota snapshot, provider price, and role.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Role</th>
+                    <th>Recommended Gemini chain: higher capability to lower</th>
+                    <th>Eligibility gate</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Audio transcript</td>
+                    <td><code>gemini-3.5-transcribe</code> → <code>gemini-3.6-flash</code> → explicitly configured
+                        compatible fallback</td>
+                    <td>Must accept audio, support language detection, and be enabled for the project. Never send audio
+                        to a text-only model.</td>
+                </tr>
+                <tr>
+                    <td>Audio + Video analysis</td>
+                    <td><code>gemini-3.8-flash</code> → <code>gemini-3.7-flash</code> → <code>gemini-3.6-flash</code> →
+                        <code>gemini-3.5-flash-lite</code>
+                    </td>
+                    <td>Must support Gemini Files API/native video analysis and the selected processing mode. Use only
+                        models that are actually enabled and have usable quota.</td>
+                </tr>
+                <tr>
+                    <td>Translation, title, Markdown/HTML rendering</td>
+                    <td><code>gemini-3.8-flash</code> → <code>gemini-3.6-flash</code> →
+                        <code>gemini-3.5-flash-lite</code> → OpenRouter text chain
+                    </td>
+                    <td>Text/structured-output support only; lower model is acceptable for filename generation and
+                        template rendering.</td>
+                </tr>
+            </tbody>
+        </table>
+        <p>Rotation rules: rate-limit errors (<code>429 RESOURCE_EXHAUSTED</code>) enqueue with reset-aware backoff;
+            temporary capacity failures (<code>503</code>) retry once or twice with jitter before moving to the next
+            eligible model; authentication, validation, content policy, and unsupported-modality errors do not rotate
+            blindly. Log every attempt and selected model in task metadata.</p>
+        <p>For OpenRouter, fetch the model catalog periodically from its models API, but restrict candidates to a
+            manually approved allow-list. OpenRouter offers route fallback and free <code>:free</code> variants, but
+            free availability/rate limits are dynamic. The plan must not treat <code>openrouter/free</code> as a
+            guaranteed quality, modality, or production fallback.</p>
+
+        <h2>9. Free-tier and Paid-cost Assessment</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Observed/current free-tier facts</th>
+                    <th>Effect of proposed upgrade</th>
+                    <th>Paid reference / risk</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Gemini 3.6 Flash</td>
+                    <td>Your AI Studio screenshot: 5 RPM, 250K TPM; current observed usage 4 RPM and 6.7K TPM over its
+                        displayed period. Limits are project/model specific and change by tier.</td>
+                    <td>Audio + Video increases tokens materially. Static video is roughly 100 tokens/sec at default low
+                        resolution and 300 tokens/sec at high resolution; audio is roughly 32 tokens/sec. Agentic video
+                        should be the default for longer content.</td>
+                    <td>Published 2026 reference: Gemini 3.6 Flash input about $0.75/M tokens and output about $3.75/M
+                        tokens through Dec 2026. Free availability does not guarantee capacity.</td>
+                </tr>
+                <tr>
+                    <td>Gemini video</td>
+                    <td>Files API free tier: up to 2GB/file. Public YouTube input: up to 8 hours/day on Free tier. Flash
+                        Free tier currently lists input/output at no charge for eligible models.</td>
+                    <td>Suitable for occasional personal use; use duration/size controls and queueing. Do not promise
+                        unlimited processing.</td>
+                    <td>At static low resolution, a 10-minute video is about 60K input tokens, estimated $0.045 at the
+                        above input reference before output; high resolution is roughly 180K/$0.135. Actual usage
+                        varies.</td>
+                </tr>
+                <tr>
+                    <td>OpenRouter</td>
+                    <td>Free variants (<code>:free</code>) have low and variable availability. Official FAQ: 50 free
+                        requests/day without at least $10 credit; 1,000/day after that threshold. Existing
+                        <code>openai/gpt-4o-mini</code> configuration is paid.
+                    </td>
+                    <td>Good as optional text/title/HTML fallback. Do not rely on it for free Audio + Video processing
+                        unless a verified compatible free model is available at runtime.</td>
+                    <td>OpenRouter returns per-call native-token usage and optional USD cost. Pricing is model-specific
+                        and passed through; current catalog must be queried at execution time.</td>
+                </tr>
+                <tr>
+                    <td>Cloudflare R2 Standard</td>
+                    <td>10 GB-month storage; 1M Class A ops/month; 10M Class B ops/month; Internet egress free;
+                        DeleteObject free.</td>
+                    <td>Immediate cleanup makes Audio + Video feasible for low concurrency. Keeping full source media
+                        would rapidly consume the 10 GB-month allowance.</td>
+                    <td>Standard: $0.015/GB-month, $4.50/M Class A, $0.36/M Class B. Use Standard only for temporary
+                        media; Infrequent Access has a 30-day minimum and retrieval fees.</td>
+                </tr>
+                <tr>
+                    <td>GitHub output repository</td>
+                    <td>GitHub API commits and repository storage are feasible for text/HTML and modest screenshot
+                        bundles.</td>
+                    <td>Keep the output repo private. Large video files must never be committed; only derived
+                        records/images belong there.</td>
+                    <td>Repository/LFS/storage limits and policy depend on GitHub account plan. Avoid binary video/audio
+                        output entirely.</td>
+                </tr>
+            </tbody>
+        </table>
+        <p><strong>Conclusion:</strong> Audio and Audio + Video can be operated in Free tiers for light, personal,
+            low-concurrency use when R2 files are promptly deleted. They cannot be promised to remain free or available
+            indefinitely because Free-tier capacity, model availability, RPM/RPD/TPM, and OpenRouter free routing are
+            dynamic.</p>
+
+        <h2>10. Temporary-media Cleanup</h2>
+        <ol>
+            <li>Store temporary media under <code>temporary/&lt;task-id&gt;/</code>.</li>
+            <li>Track each object and its purpose: extracted MP3, downloaded original video, rendered frame,
+                intermediate merged video.</li>
+            <li>After completed transcript, completed HTML/Markdown rendering, and successful optional GitHub
+                publication: delete all temporary R2 objects and Gemini Files API objects.</li>
+            <li>On terminal failure: retain error metadata; delete temporary objects in a final cleanup block.</li>
+            <li>Add a user setting <code>Keep source media</code>, default <code>false</code>. Only explicit opt-in
+                disables cleanup.</li>
+            <li>Configure an R2 lifecycle rule as a failsafe to delete <code>temporary/</code> objects after 24 hours.
+            </li>
+        </ol>
+        <p>Deleting media is safe for normal history because local IndexedDB retains transcript/summary data and the
+            optional output repo retains record artifacts. Deletion is not safe if the user expects future video
+            re-analysis; the UI should state that re-analysis requires uploading/parsing the source again unless Keep
+            source media is enabled.</p>
+
+        <h2>11. GitHub Output Publishing</h2>
+        <p>Publishing is feasible. Add a server-only GitHub service using Git Data API so a whole record bundle is
+            committed atomically instead of creating one commit per screenshot.</p>
+        <pre>GITHUB_OUTPUT_ENABLED=false
+GITHUB_OUTPUT_REPOSITORY=noeltehjianhaur/AI-Media2Doc-Output
+GITHUB_OUTPUT_BRANCH=main
+GITHUB_OUTPUT_TOKEN=github_pat_...  # Fine-grained: Contents Read/Write on this repo only</pre>
+        <ol>
+            <li>User enables Publish for a task; default remains off.</li>
+            <li>Backend produces Markdown or HTML bundle plus manifest.</li>
+            <li>Backend derives a safe LLM title and deterministic destination directory.</li>
+            <li>Backend makes one tree, commit, and branch-reference update.</li>
+            <li>Task stores output commit SHA, repository URL, output path, and status.</li>
+            <li>A failed publish can retry from saved task data without repeating AI processing.</li>
+        </ol>
+
+        <h2>12. Implementation Order and Acceptance Tests</h2>
+        <ol>
+            <li>Add task schema/version migration, Audio/Audio + Video selection, mode persistence, and output metadata.
+            </li>
+            <li>Add provider capability manifest, per-task usage ledger, live Gemini/OpenRouter/Cloudflare provider
+                adapters, redacted usage and refresh endpoints, Provider Usage panel, model configuration panel, and
+                request queue/backoff.</li>
+            <li>Add R2/Gemini temporary-object tracking and cleanup before introducing full-video storage.</li>
+            <li>Add GitHub output publishing for Audio → Markdown; verify naming, metadata, no source URL for local
+                uploads, and one atomic commit.</li>
+            <li>Add native Gemini SDK/Files API and Audio + Video workflow for uploaded video.</li>
+            <li>Add direct Gemini YouTube video input and video+audio yt-dlp route for other supported platforms,
+                retaining audio-only fallback.</li>
+            <li>Add schema-validated visual transcript, selected screenshot extraction, static SVG diagrams, and secure
+                HTML rendering/publication.</li>
+            <li>Run free-tier guardrail, cleanup, retry, model-selection, and privacy/security tests.</li>
+        </ol>
+        <table>
+            <thead>
+                <tr>
+                    <th>Acceptance test</th>
+                    <th>Expected result</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Audio upload</td>
+                    <td>Existing MP3 path and Markdown output still work; no visual-only claims appear.</td>
+                </tr>
+                <tr>
+                    <td>Audio + Video upload with unspoken repo/tool name on screen</td>
+                    <td>HTML explicitly records the on-screen name near the relevant timestamp and includes a selected
+                        screenshot when useful.</td>
+                </tr>
+                <tr>
+                    <td>Link task</td>
+                    <td>Record includes source URL. Upload task does not include source URL.</td>
+                </tr>
+                <tr>
+                    <td>Filename</td>
+                    <td>Meaningful LLM title becomes safe <code>&lt;title&gt;_&lt;UTC datetime&gt;.md/.html</code>;
+                        collision handling does not overwrite a previous record.</td>
+                </tr>
+                <tr>
+                    <td>Gemini reaches 5 RPM</td>
+                    <td>Request queues/backoffs or switches only to an eligible configured model; it does not call a
+                        zero-quota/unrelated model.</td>
+                </tr>
+                <tr>
+                    <td>Provider Usage panel page load</td>
+                    <td>Gemini, OpenRouter, and Cloudflare refresh concurrently and each card displays a live value or
+                        an explicit <code>unsupported</code>, <code>not_configured</code>, or <code>error</code> state
+                        with retrieval time.</td>
+                </tr>
+                <tr>
+                    <td>Transcript completion and manual Refresh</td>
+                    <td>Each trigger updates all provider cards once without duplicate overlapping calls. A failed
+                        provider retains its last successful values as stale and does not block the other providers.
+                    </td>
+                </tr>
+                <tr>
+                    <td>Provider telemetry security</td>
+                    <td>No Google, OpenRouter, or Cloudflare credential appears in browser storage, API responses, or
+                        logs; refresh endpoints are authenticated and manual calls are rate-limited.</td>
+                </tr>
+                <tr>
+                    <td>Publication</td>
+                    <td>One output repo commit contains the complete record. GitHub token never appears in browser/API
+                        responses/logs.</td>
+                </tr>
+                <tr>
+                    <td>Cleanup</td>
+                    <td>R2 and Gemini temporary objects are deleted after finalization; local history and published
+                        output remain readable.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>13. Approval Gates</h2>
+        <p>Before implementation: confirm the desired Gemini model allow-list after checking which models are enabled
+            for the specific project; decide whether GitHub output publishing defaults to off (recommended); create a
+            private <code>noeltehjianhaur/AI-Media2Doc-Output</code> repository; create a fine-grained output-repo
+            token; and choose initial Audio + Video duration/size guardrails.</p>
+    </main>
+</body>
+
+</html>

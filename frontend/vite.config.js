@@ -8,14 +8,18 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
     server: {
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-        'Cross-Origin-Resource-Policy': 'same-origin'
+      host: 'localhost',
+      port: 5173,
+      strictPort: true,
+      hmr: {
+        protocol: 'ws',
+        host: 'localhost',
+        port: 5173,
+        clientPort: 5173
       },
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL,
+          target: env.VITE_API_BASE_URL || 'http://localhost:8080',
           changeOrigin: true
         },
       },
