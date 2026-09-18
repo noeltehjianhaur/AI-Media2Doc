@@ -1,5 +1,5 @@
 <script setup>
-import { ElUpload, ElIcon, ElMessage, ElRadioGroup, ElRadioButton, ElInput, ElInputNumber, ElCollapse, ElCollapseItem, ElTooltip, ElButton } from 'element-plus'
+import { ElUpload, ElIcon, ElMessage, ElRadioGroup, ElRadioButton, ElInput, ElInputNumber, ElCollapse, ElCollapseItem, ElTooltip, ElButton, ElSwitch } from 'element-plus'
 import { UploadFilled, VideoCamera, Promotion, RefreshRight, Loading, Setting, Link } from '@element-plus/icons-vue'
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -46,13 +46,48 @@ const props = defineProps({
   linkUrl: {
     type: String,
     default: ''
+  },
+  processingMode: {
+    type: String,
+    default: 'audio'
+  },
+  keepSourceMedia: {
+    type: Boolean,
+    default: false
+  },
+  publishOutput: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['file-selected', 'link-submitted', 'update:style', 'update:remarks', 'update:timeout', 'update:maxTokens', 'start-process', 'reset'])
+const emit = defineEmits(['file-selected', 'link-submitted', 'update:style', 'update:remarks', 'update:timeout', 'update:maxTokens', 'update:processingMode', 'update:keepSourceMedia', 'update:publishOutput', 'start-process', 'reset'])
 
 const hasSource = computed(() => !!props.file || !!props.linkUrl)
 const linkInput = ref('')
+const sourceIsMp3 = computed(() => props.file && (props.file.type === 'audio/mpeg' || props.fileName?.toLowerCase().endsWith('.mp3')))
+const mediaDuration = ref(null)
+
+watch(() => props.file, file => {
+  mediaDuration.value = null
+  if (!file) return
+  const media = document.createElement(file.type.startsWith('audio/') ? 'audio' : 'video')
+  const objectUrl = URL.createObjectURL(file)
+  media.preload = 'metadata'
+  media.onloadedmetadata = () => {
+    mediaDuration.value = Number.isFinite(media.duration) ? Math.round(media.duration) : null
+    URL.revokeObjectURL(objectUrl)
+  }
+  media.onerror = () => URL.revokeObjectURL(objectUrl)
+  media.src = objectUrl
+})
+
+const formattedDuration = computed(() => {
+  if (mediaDuration.value === null) return null
+  const minutes = Math.floor(mediaDuration.value / 60)
+  const seconds = mediaDuration.value % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+})
 
 const handleLinkSubmit = () => {
   const url = linkInput.value.trim()
@@ -217,6 +252,10 @@ const handleMaxTokensChange = (val) => {
               <span class="file-info-label">{{ t('upload.fileSize') }}</span>
               <span class="file-info-value">{{ (props.fileSize / 1024 / 1024).toFixed(2) }} MB</span>
             </div>
+            <div v-if="formattedDuration" class="file-info-row">
+              <span class="file-info-label">{{ t('upload.duration') }}</span>
+              <span class="file-info-value">{{ formattedDuration }}</span>
+            </div>
             <div class="file-info-row">
               <span class="file-info-label">{{ t('upload.fileMd5') }}</span>
               <span class="file-info-value file-info-md5">
@@ -237,6 +276,24 @@ const handleMaxTokensChange = (val) => {
           </template>
         </div>
         <div class="file-info-main">
+          <div class="mode-controls">
+            <div class="mode-row">
+              <span class="mode-label">{{ t('upload.processingMode') }}</span>
+              <el-radio-group :model-value="processingMode" :disabled="isProcessing"
+                @change="value => emit('update:processingMode', value)">
+                <el-radio-button value="audio">{{ t('upload.audioMode') }}</el-radio-button>
+                <el-radio-button value="audio_video" :disabled="sourceIsMp3">{{ t('upload.audioVideoMode') }}</el-radio-button>
+              </el-radio-group>
+            </div>
+            <p v-if="processingMode === 'audio_video'" class="mode-notice">
+              {{ t('upload.audioVideoNotice') }}
+              <span v-if="formattedDuration"> {{ t('upload.mediaEstimate', { duration: formattedDuration, size: (props.fileSize / 1024 / 1024).toFixed(2) }) }}</span>
+            </p>
+            <div class="option-row">
+              <label><el-switch :model-value="keepSourceMedia" @change="value => emit('update:keepSourceMedia', value)" /> {{ t('upload.keepSourceMedia') }}</label>
+              <label><el-switch :model-value="publishOutput" @change="value => emit('update:publishOutput', value)" /> {{ t('upload.publishOutput') }}</label>
+            </div>
+          </div>
           <div class="style-selector-wrapper style-selector-flex">
             <el-radio-group v-model="localStyle" :disabled="isProcessing" @change="handleStyleChange" size="large"
               class="style-radio-group-flex">
@@ -527,6 +584,28 @@ const handleMaxTokensChange = (val) => {
   align-items: center;
   /* 不设置gap，间距用margin控制 */
 }
+
+.mode-controls {
+  width: 93%;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.mode-row, .option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.mode-label { font-weight: 650; }
+.mode-notice { margin: 10px 0; color: #8a5200; font-size: 13px; }
+.option-row { justify-content: flex-start; margin-top: 12px; }
+.option-row label { display: flex; align-items: center; gap: 8px; color: #536176; }
 
 .file-info-card {
   width: 93%;

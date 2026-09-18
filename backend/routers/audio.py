@@ -7,12 +7,15 @@ import requests
 from openai import OpenAI
 
 from constants import AsrTaskStatus
-from models import FileNameRequest
+from models import FileNameRequest, ProcessingMode
 from core.exceptions import BusinessException, ExternalServiceException
 from core.response import success_response, APIResponse
 from config.log import get_logger
 import env
-from utils.s3 import generate_download_url
+from services.gemini_video import analyze_video
+from services.model_routing import get_model_candidates, is_retryable_error, model_request_slot
+from services.provider_usage import provider_usage_service
+from utils.s3 import delete_object, generate_download_url
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 logger = get_logger(__name__)
@@ -26,32 +29,10 @@ TRANSCRIPTION_PROMPT = (
 
 def get_asr_providers():
     """Ordered ASR providers: Gemini first, OpenRouter as fallback."""
-    providers = []
-    if all([env.GEMINI_BASE_URL, env.GEMINI_API_KEY, env.GEMINI_MODEL_ID]):
-        providers.append(
-            (
-                "Google Gemini",
-                env.GEMINI_BASE_URL,
-                env.GEMINI_API_KEY,
-                env.GEMINI_MODEL_ID,
-            )
-        )
-    if all(
-        [
-            env.OPENROUTER_BASE_URL,
-            env.OPENROUTER_API_KEY,
-            env.OPENROUTER_ASR_MODEL_ID,
-        ]
-    ):
-        providers.append(
-            (
-                "OpenRouter",
-                env.OPENROUTER_BASE_URL,
-                env.OPENROUTER_API_KEY,
-                env.OPENROUTER_ASR_MODEL_ID,
-            )
-        )
-    return providers
+    return [
+        (item["name"], item["base_url"], item["api_key"], item["model"])
+        for item in get_model_candidates("audio")
+    ]
 
 
 def transcribe_audio(filename):
@@ -85,23 +66,30 @@ def transcribe_audio(filename):
     for provider_name, base_url, api_key, model_id in providers:
         for attempt in range(3):
             try:
-                response = OpenAI(
-                    base_url=base_url,
-                    api_key=api_key,
-                    max_retries=0,
-                ).chat.completions.create(
-                    model=model_id, messages=messages, timeout=90
-                )
+                with model_request_slot:
+                    response = OpenAI(
+                        base_url=base_url,
+                        api_key=api_key,
+                        max_retries=0,
+                    ).chat.completions.create(
+                        model=model_id, messages=messages, timeout=90
+                    )
                 text = (response.choices[0].message.content or "").strip()
                 if not text:
                     raise ExternalServiceException(
                         "ASR",
                         "No spoken text was detected in the extracted audio",
                     )
-                return text
+                usage = getattr(response, "usage", None)
+                usage_data = usage.model_dump(exclude_none=True) if usage else {}
+                return text, {
+                    "provider": provider_name,
+                    "model": model_id,
+                    **usage_data,
+                }
             except Exception as error:
                 last_error = error
-                is_transient = "503" in str(error) or "UNAVAILABLE" in str(error)
+                is_transient = is_retryable_error(error)
                 if not is_transient or attempt == 2:
                     logger.warning(f"{provider_name} transcription failed: {error}")
                     break
@@ -116,26 +104,76 @@ def transcribe_audio(filename):
     raise ExternalServiceException("ASR", f"All providers failed: {last_error}")
 
 
-def create_transcription_record(filename):
+def create_transcription_record(
+    filename,
+    processing_mode=ProcessingMode.AUDIO,
+    source_type="upload",
+    original_name=None,
+    source_url=None,
+    keep_source_media=False,
+):
+    if (
+        ProcessingMode(processing_mode) == ProcessingMode.AUDIO_VIDEO
+        and filename.lower().endswith((".mp3", ".wav", ".m4a", ".aac", ".flac"))
+    ):
+        raise BusinessException("Audio + Video mode requires a video source")
     task_id = f"asr-{uuid.uuid4()}"
     ASR_TASKS[task_id] = {
-        "status": AsrTaskStatus.RUNNING.value,
+        "status": "queued",
         "text": None,
+        "visual_analysis": None,
+        "usage": {},
         "error": None,
+        "processing_mode": ProcessingMode(processing_mode).value,
+        "source_type": source_type,
+        "original_name": original_name or filename,
+        "source_url": source_url,
+        "filename": filename,
+        "keep_source_media": keep_source_media,
+        "created_at": int(time.time()),
     }
     return task_id
 
 
 def run_transcription_task(task_id, filename):
     """Run provider calls after task creation so the client can poll safely."""
+    task = ASR_TASKS[task_id]
+    task["status"] = "processing"
     try:
-        ASR_TASKS[task_id]["text"] = transcribe_audio(filename)
-        ASR_TASKS[task_id]["status"] = AsrTaskStatus.FINISHED.value
+        if task["processing_mode"] == ProcessingMode.AUDIO_VIDEO.value:
+            visual_analysis, usage = analyze_video(
+                filename=filename or None,
+                source_url=task.get("source_url"),
+            )
+            task["visual_analysis"] = visual_analysis
+            task["text"] = visual_analysis["segments"]
+        else:
+            task["text"], usage = transcribe_audio(filename)
+        task["usage"] = usage
+        task["status"] = "completed"
+        task["completed_at"] = int(time.time())
+        provider_usage_service.invalidate()
         logger.info(f"Transcription task {task_id} completed successfully")
     except Exception as error:
         logger.error(f"Transcription task {task_id} failed: {error}")
-        ASR_TASKS[task_id]["status"] = AsrTaskStatus.FAILED.value
-        ASR_TASKS[task_id]["error"] = str(error)
+        task["status"] = "failed"
+        task["error"] = str(error)
+    finally:
+        if filename and filename.startswith("temporary/") and not task["keep_source_media"]:
+            for cleanup_attempt in range(3):
+                try:
+                    delete_object(filename)
+                    task["source_deleted"] = True
+                    break
+                except Exception as cleanup_error:
+                    task["source_deleted"] = False
+                    task["cleanup_error"] = str(cleanup_error)
+                    logger.warning(
+                        f"Unable to delete temporary object {filename} "
+                        f"(attempt {cleanup_attempt + 1}/3): {cleanup_error}"
+                    )
+                    if cleanup_attempt < 2:
+                        time.sleep(cleanup_attempt + 1)
 
 
 @router.post("/transcription-tasks", response_model=APIResponse)
@@ -149,7 +187,12 @@ async def create_transcription_task(
     logger.info(f"Creating transcription task for file: {request.filename}")
 
     try:
-        task_id = create_transcription_record(request.filename)
+        task_id = create_transcription_record(
+            request.filename,
+            processing_mode=request.processing_mode,
+            original_name=request.original_name,
+            keep_source_media=request.keep_source_media,
+        )
         background_tasks.add_task(run_transcription_task, task_id, request.filename)
 
         logger.info(f"Transcription task created successfully with ID: {task_id}")
@@ -185,13 +228,18 @@ async def get_transcription_task(task_id: str):
             )
 
         task = ASR_TASKS[task_id]
-        if task["status"] == AsrTaskStatus.RUNNING.value:
+        if task["status"] in {"queued", "processing"}:
             return success_response(
-                data={"status": AsrTaskStatus.RUNNING.value, "result": None},
+                data={
+                    "status": AsrTaskStatus.RUNNING.value,
+                    "lifecycle_status": task["status"],
+                    "processing_mode": task["processing_mode"],
+                    "result": None,
+                },
                 message="Transcription in progress",
             )
 
-        if task["status"] == AsrTaskStatus.FAILED.value:
+        if task["status"] == "failed":
             return success_response(
                 data={"status": AsrTaskStatus.FAILED.value, "result": None},
                 message=task["error"] or "Transcription failed",
@@ -200,9 +248,14 @@ async def get_transcription_task(task_id: str):
         return success_response(
             data={
                 "status": AsrTaskStatus.FINISHED.value,
-                "result": [
-                    {"start_time": 0, "end_time": 0, "text": task["text"]}
-                ],
+                "lifecycle_status": task["status"],
+                "processing_mode": task["processing_mode"],
+                "result": task["text"]
+                if isinstance(task["text"], list)
+                else [{"start_time": 0, "end_time": 0, "text": task["text"]}],
+                "visual_analysis": task["visual_analysis"],
+                "usage": task["usage"],
+                "source_deleted": task.get("source_deleted", False),
             },
             message="Transcription completed",
         )

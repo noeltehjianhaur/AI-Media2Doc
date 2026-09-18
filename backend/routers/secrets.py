@@ -26,8 +26,12 @@ async def get_environment_variables():
     always_mask = [
         "GEMINI_API_KEY",
         "OPENROUTER_API_KEY",
+        "OPENROUTER_MANAGEMENT_KEY",
         "STORAGE_ACCESS_KEY",
         "STORAGE_SECRET_KEY",
+        "CLOUDFLARE_ANALYTICS_TOKEN",
+        "GOOGLE_CLOUD_ACCESS_TOKEN",
+        "GITHUB_OUTPUT_TOKEN",
     ]
 
     for key, value in vars(env).items():

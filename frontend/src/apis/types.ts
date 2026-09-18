@@ -57,16 +57,26 @@ export interface SubmitAsrTaskResponse {
   task_id: string;
 }
 
+export type ProcessingMode = 'audio' | 'audio_video';
+
 /**
  * ASR任务查询响应
  */
 export interface QueryASRTaskResponse {
   status: string;
+  lifecycle_status?: 'queued' | 'processing' | 'completed' | 'failed';
+  processing_mode?: ProcessingMode;
   result: Array<{
     start_time: number;
     end_time: number;
     text: string;
+    on_screen_text?: string;
+    visual_actions?: string[];
+    important?: boolean;
   }> | null;
+  visual_analysis?: Record<string, any> | null;
+  usage?: Record<string, any>;
+  source_deleted?: boolean;
 }
 
 /**
@@ -80,6 +90,7 @@ export type TaskStatus = 'running' | 'finished' | 'failed';
 export interface AudioTaskResult {
   text: Array<Record<string, any>> | null;
   status: TaskStatus;
+  details?: QueryASRTaskResponse | null;
 }
 
 /**
@@ -97,8 +108,35 @@ export interface Task {
   transcriptionText: string;
   markdownContent: string;
   contentStyle: ContentStyle;
+  processingMode?: ProcessingMode;
+  outputFormat?: 'markdown' | 'html';
+  outputPath?: string;
+  usage?: Record<string, any>;
+  visualAnalysis?: Record<string, any> | null;
+  sourceUrl?: string;
+  publication?: Record<string, any> | null;
   createdAt: string;
 }
+
+export interface ProviderMetric {
+  name: string;
+  value: number | string;
+  unit: string;
+  dimensions?: Record<string, string>;
+}
+
+export interface ProviderUsageItem {
+  status: 'available' | 'unsupported' | 'not_configured' | 'error';
+  source: 'provider_reported' | 'locally_measured';
+  retrieved_at: string;
+  reporting_period: string | null;
+  metrics: ProviderMetric[];
+  dashboard_url: string | null;
+  stale: boolean;
+  error_code?: string;
+}
+
+export type ProviderUsageData = Record<'gemini' | 'openrouter' | 'cloudflare', ProviderUsageItem>;
 
 // 兼容旧代码的类型别名
 export interface AudioTaskResponse extends UploadUrlResponse { }

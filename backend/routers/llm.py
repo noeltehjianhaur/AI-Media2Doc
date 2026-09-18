@@ -2,59 +2,57 @@
 
 from fastapi import APIRouter
 from openai import APIError, OpenAI
+import time
 
 import env
 from core.response import success_response, APIResponse
 from models import ChatRequest, TranslationRequest
+from services.model_routing import get_model_candidates, is_retryable_error, model_request_slot
+from core.exceptions import ExternalServiceException
 
 router = APIRouter(prefix="/llm", tags=["LLM"])
 
 
 def create_completion(messages, timeout, max_tokens=None):
     """Try configured providers in order: Gemini, then OpenRouter."""
-    providers = []
-    if all([env.GEMINI_BASE_URL, env.GEMINI_API_KEY, env.GEMINI_MODEL_ID]):
-        providers.append(
-            (
-                "Google Gemini",
-                env.GEMINI_BASE_URL,
-                env.GEMINI_API_KEY,
-                env.GEMINI_MODEL_ID,
-            )
-        )
-    if all(
-        [env.OPENROUTER_BASE_URL, env.OPENROUTER_API_KEY, env.OPENROUTER_MODEL_ID]
-    ):
-        providers.append(
-            (
-                "OpenRouter",
-                env.OPENROUTER_BASE_URL,
-                env.OPENROUTER_API_KEY,
-                env.OPENROUTER_MODEL_ID,
-            )
-        )
+    providers = [
+        (item["name"], item["base_url"], item["api_key"], item["model"])
+        for item in get_model_candidates("text")
+    ]
 
     last_error = None
     for provider_name, base_url, api_key, model_id in providers:
-        try:
-            request_options = {
-                "model": model_id,
-                "messages": messages,
-                "timeout": timeout,
-            }
-            if max_tokens is not None:
-                request_options["max_tokens"] = max_tokens
+        for attempt in range(2):
+            try:
+                request_options = {
+                    "model": model_id,
+                    "messages": messages,
+                    "timeout": timeout,
+                }
+                if max_tokens is not None:
+                    request_options["max_tokens"] = max_tokens
 
-            return OpenAI(base_url=base_url, api_key=api_key).chat.completions.create(
-                **request_options
-            )
-        except APIError as error:
-            last_error = error
-            if provider_name != providers[-1][0]:
-                continue
-            raise
+                with model_request_slot:
+                    return OpenAI(base_url=base_url, api_key=api_key).chat.completions.create(
+                        **request_options
+                    )
+            except Exception as error:
+                last_error = error
+                if is_retryable_error(error) and attempt == 0:
+                    time.sleep(5)
+                    continue
+                break
 
-    raise last_error
+    raise ExternalServiceException("LLM", f"All configured text models failed: {last_error}")
+
+
+def completion_data(response):
+    usage = response.usage.model_dump(exclude_none=True) if response.usage else None
+    return {
+        "choices": [choice.model_dump() for choice in response.choices],
+        "model": response.model,
+        "usage": usage,
+    }
 
 
 @router.post("/completions", response_model=APIResponse)
@@ -67,7 +65,7 @@ async def default_chat(request: ChatRequest):
 
     response = create_completion(messages, timeout=120)
     return success_response(
-        data={"choices": [choices.model_dump() for choices in response.choices]},
+        data=completion_data(response),
         message="Chat completed successfully",
     )
 
@@ -99,7 +97,7 @@ async def generate_markdown_text(request: ChatRequest):
     )
 
     return success_response(
-        data={"choices": [choices.model_dump() for choices in response.choices]},
+        data=completion_data(response),
         message="Chat completed successfully",
     )
 
@@ -126,6 +124,10 @@ async def translate_text(request: TranslationRequest):
     )
 
     return success_response(
-        data={"text": response.choices[0].message.content or ""},
+        data={
+            "text": response.choices[0].message.content or "",
+            "model": response.model,
+            "usage": response.usage.model_dump(exclude_none=True) if response.usage else None,
+        },
         message="Translation completed successfully",
     )

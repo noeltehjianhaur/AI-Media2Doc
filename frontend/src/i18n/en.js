@@ -52,7 +52,16 @@ export default {
         reselect: 'Choose another file',
         unsupportedType: 'Only video files (MP4, MOV, AVI, MKV, WebM) or MP3 audio are supported',
         tooLarge: 'File size cannot exceed {size}MB',
-        remarksPlaceholder: 'Add notes on top of the default prompt for more personalised output, e.g. make it more detailed'
+        remarksPlaceholder: 'Add notes on top of the default prompt for more personalised output, e.g. make it more detailed',
+        processingMode: 'Transcript source',
+        audioMode: 'Audio',
+        audioVideoMode: 'Audio + Video',
+        audioVideoNotice: 'Uses the original video and more multimodal quota. Processing may take longer.',
+        keepSourceMedia: 'Keep source media',
+        publishOutput: 'Publish output to GitHub',
+        duration: 'Duration:',
+        mediaEstimate: 'Estimated input: {duration}, {size} MB.',
+        videoTooLarge: 'Audio + Video input cannot exceed the configured {size} MB limit.'
     },
     styles: {
         note: 'Study notes',
@@ -175,6 +184,7 @@ export default {
         title: 'Settings',
         style: 'Content style',
         connectivity: 'Connectivity',
+        providerUsage: 'Provider usage',
         screenshot: 'Screenshots',
         password: 'Access password',
         other: 'Other',

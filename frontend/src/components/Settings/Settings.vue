@@ -43,6 +43,10 @@
                         </el-icon>
                         <span>{{ t('settings.connectivity') }}</span>
                     </li>
+                    <li :class="{ active: activeMenu === 'providerUsage' }" @click="activeMenu = 'providerUsage'">
+                        <el-icon><DataAnalysis /></el-icon>
+                        <span>{{ t('settings.providerUsage') }}</span>
+                    </li>
                     <li :class="{ active: activeMenu === 'about' }" @click="activeMenu = 'about'">
                         <el-icon>
                             <InfoFilled />
@@ -63,6 +67,7 @@
                     <SettingsOther v-if="activeMenu === 'other'" />
                     <SettingsAbout v-if="activeMenu === 'about'" />
                     <SettingsConnectivity v-if="activeMenu === 'connectivity'" />
+                    <SettingsProviderUsage v-if="activeMenu === 'providerUsage'" />
                 </div>
             </div>
         </div>
@@ -71,7 +76,7 @@
 
 <script setup>
 import { ref, watch, defineProps, defineEmits } from 'vue'
-import { Document, Lock, Picture, Setting, InfoFilled, Link, ChatLineSquare } from '@element-plus/icons-vue'
+import { Document, Lock, Picture, Setting, InfoFilled, Link, ChatLineSquare, DataAnalysis } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import SettingsStyle from './SettingsStyle.vue'
 import SettingsLanguage from './SettingsLanguage.vue'
@@ -80,6 +85,7 @@ import SettingsScreenshot from './SettingsScreenshot.vue'
 import SettingsOther from './SettingsOther.vue'
 import SettingsAbout from './SettingsAbout.vue'
 import SettingsConnectivity from './SettingsConnectivity.vue'
+import SettingsProviderUsage from './SettingsProviderUsage.vue'
 
 const { t } = useI18n()
 
@@ -108,6 +114,7 @@ const menuTitleKeys = {
     screenshot: 'settings.screenshot',
     other: 'settings.other',
     connectivity: 'settings.connectivity',
+    providerUsage: 'settings.providerUsage',
     about: 'settings.about'
 }
 
@@ -236,5 +243,55 @@ function getMenuTitle() {
     flex: 1;
     padding: 24px 32px;
     overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    :global(.settings-dialog) {
+        width: 94vw !important;
+        margin-top: 3vh !important;
+    }
+
+    .settings-dialog-body {
+        flex-direction: column;
+        min-height: 0;
+        max-height: 86vh;
+    }
+
+    .settings-sidebar {
+        width: 100%;
+        border-right: 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .sidebar-header {
+        display: none;
+    }
+
+    .sidebar-menu {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 8px;
+    }
+
+    .sidebar-menu li {
+        flex: 0 0 auto;
+        margin: 0;
+        padding: 9px 12px;
+    }
+
+    .settings-content {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .content-header {
+        padding: 16px;
+    }
+
+    .content-body {
+        padding: 16px;
+        max-height: 64vh;
+    }
 }
 </style>

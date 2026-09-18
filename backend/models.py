@@ -1,7 +1,13 @@
 # -*- coding: UTF-8 -*-
 
-from pydantic import BaseModel
-from typing import List, Optional, Any
+from pydantic import BaseModel, Field
+from typing import Dict, List, Optional, Any
+from enum import Enum
+
+
+class ProcessingMode(str, Enum):
+    AUDIO = "audio"
+    AUDIO_VIDEO = "audio_video"
 
 
 class MessageModel(BaseModel):
@@ -27,10 +33,31 @@ class TranslationRequest(BaseModel):
 
 class FileNameRequest(BaseModel):
     filename: str
+    processing_mode: ProcessingMode = ProcessingMode.AUDIO
+    original_name: Optional[str] = None
+    keep_source_media: bool = False
 
 
 class VideoLinkRequest(BaseModel):
     url: str
+    processing_mode: ProcessingMode = ProcessingMode.AUDIO
+    keep_source_media: bool = False
+
+
+class OutputRecordRequest(BaseModel):
+    processing_mode: ProcessingMode = ProcessingMode.AUDIO
+    transcript: Any
+    generated_content: str
+    metadata: Dict[str, Any]
+    visual_analysis: Optional[Dict[str, Any]] = None
+    screenshots: List[Dict[str, Any]] = Field(default_factory=list)
+    title: Optional[str] = None
+    publish: bool = False
+
+
+class PublishOutputRequest(BaseModel):
+    title: str
+    files: Dict[str, Any]
 
 
 class EnvResponse(BaseModel):

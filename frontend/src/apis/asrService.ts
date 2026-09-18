@@ -1,18 +1,26 @@
 import httpService from './http'
-import { APIResponse, SubmitAsrTaskResponse, QueryASRTaskResponse, AudioTaskResult, TaskStatus } from './types'
+import { APIResponse, SubmitAsrTaskResponse, QueryASRTaskResponse, AudioTaskResult, ProcessingMode, TaskStatus } from './types'
 
 /**
  * 提交音频处理任务
  * @param audioFileName 音频文件名
  * @returns 任务ID
  */
-export const submitAsrTask = async (audioFileName: string): Promise<string> => {
+export const submitAsrTask = async (
+  filename: string,
+  processingMode: ProcessingMode = 'audio',
+  originalName?: string,
+  keepSourceMedia = false
+): Promise<string> => {
   try {
     const response = await httpService.request<APIResponse<SubmitAsrTaskResponse>>({
       url: '/api/v1/audio/transcription-tasks',
       method: 'POST',
       data: {
-        filename: audioFileName
+        filename,
+        processing_mode: processingMode,
+        original_name: originalName,
+        keep_source_media: keepSourceMedia
       }
     })
 
@@ -52,12 +60,28 @@ export const queryAsrTask = async (taskId: string): Promise<AudioTaskResult> => 
 
     return {
       text,
-      status
+      status,
+      details: response.data
     }
   } catch (error) {
     console.error('查询音频任务失败:', error)
     throw error
   }
+}
+
+export const pollAsrTaskDetails = async (
+  taskId: string,
+  maxAttempts?: number,
+  interval = 3000
+): Promise<QueryASRTaskResponse> => {
+  const actualMaxAttempts = maxAttempts || getMaxPollingAttempts()
+  for (let attempts = 0; attempts < actualMaxAttempts; attempts++) {
+    const result = await queryAsrTask(taskId)
+    if (result.status === 'finished') return result.details as QueryASRTaskResponse
+    if (result.status === 'failed') throw new Error('Transcription failed')
+    await new Promise(resolve => setTimeout(resolve, interval))
+  }
+  throw new Error(`Transcription timed out after ${actualMaxAttempts} attempts`)
 }
 
 /**
@@ -87,27 +111,7 @@ export const pollAsrTask = async (
   taskId: string,
   maxAttempts?: number,
   interval = 3000
-): Promise<string> => {
-  const actualMaxAttempts = maxAttempts || getMaxPollingAttempts()
-  let attempts = 0
-
-  console.log(`开始轮询任务 ${taskId}，最大尝试次数: ${actualMaxAttempts}`)
-
-  while (attempts < actualMaxAttempts) {
-    const result = await queryAsrTask(taskId)
-    console.log('Polling result:', result)
-
-    if (result.status === 'finished') {
-      return result.text
-    }
-
-    if (result.status === 'failed') {
-      throw new Error('音频识别失败')
-    }
-
-    await new Promise(resolve => setTimeout(resolve, interval))
-    attempts++
-  }
-
-  throw new Error(`音频识别超时，已尝试 ${actualMaxAttempts} 次`)
+): Promise<Array<Record<string, any>> | null> => {
+  const result = await pollAsrTaskDetails(taskId, maxAttempts, interval)
+  return result.result
 }

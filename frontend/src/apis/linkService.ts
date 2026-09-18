@@ -1,5 +1,5 @@
 import httpService from './http'
-import { APIResponse } from './types'
+import { APIResponse, ProcessingMode } from './types'
 
 export interface LinkTaskResponse {
     task_id: string
@@ -11,11 +11,15 @@ export interface LinkTaskResponse {
  * @param url 视频或网页链接
  * @returns 任务ID与生成的音频文件名
  */
-export const submitLinkTask = async (url: string): Promise<LinkTaskResponse> => {
+export const submitLinkTask = async (
+    url: string,
+    processingMode: ProcessingMode = 'audio',
+    keepSourceMedia = false
+): Promise<LinkTaskResponse> => {
     const response = await httpService.request<APIResponse<LinkTaskResponse>>({
         url: '/api/v1/link/transcription-tasks',
         method: 'POST',
-        data: { url }
+        data: { url, processing_mode: processingMode, keep_source_media: keepSourceMedia }
     })
 
     if (!response.success || !response.data) {

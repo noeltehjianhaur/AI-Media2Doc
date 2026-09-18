@@ -3,8 +3,12 @@ import { ref, computed } from 'vue'
 import ChatPanel from './ChatPanel.vue'
 import TranscriptionPanel from './TranscriptionPanel.vue'
 import GeneratedContentPanel from './GeneratedContentPanel.vue'
-import { ChatDotRound } from '@element-plus/icons-vue'
+import { ChatDotRound, Upload } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus'
+import { publishOutputRecord } from '../../apis/outputRecordService'
+import { updateTask } from '../../utils/db'
+import { eventBus } from '../../utils/eventBus'
 
 const { t } = useI18n()
 
@@ -23,6 +27,20 @@ const chatPanelKey = computed(() => `chat-panel-${props.task.id}`)
 const showChatPanel = ref(false)
 const openChatPanel = () => { showChatPanel.value = true }
 const closeChatPanel = () => { showChatPanel.value = false }
+const publishing = ref(false)
+const retryPublication = async () => {
+    publishing.value = true
+    try {
+        props.task.publication = await publishOutputRecord(props.task.outputPath || props.task.fileName, props.task.outputFiles)
+        await updateTask(props.task)
+        eventBus.emit('task-updated')
+        ElMessage.success('Output published')
+    } catch (error) {
+        ElMessage.error(error.message || 'Publication failed')
+    } finally {
+        publishing.value = false
+    }
+}
 </script>
 
 <template>
@@ -30,13 +48,18 @@ const closeChatPanel = () => { showChatPanel.value = false }
         <div class="detail-container">
             <!-- 左侧：生成图文 -->
             <div class="left-panel">
-                <GeneratedContentPanel :content="task.markdownContent" :taskId="task.id" />
+                <GeneratedContentPanel :content="task.markdownContent" :taskId="task.id"
+                    :output-content="task.outputContent || ''" :output-format="task.outputFormat || 'markdown'"
+                    :output-path="task.outputPath || ''" :output-files="task.outputFiles || {}" />
             </div>
             <!-- 右侧：会议对话 -->
             <div class="right-panel">
                 <TranscriptionPanel :transcription="task.transcriptionText" />
             </div>
         </div>
+
+        <el-button v-if="task.publication?.status === 'failed'" class="retry-publish" :icon="Upload"
+            :loading="publishing" @click="retryPublication">Retry publication</el-button>
 
         <!-- 悬浮AI助手按钮 -->
         <div class="floating-ai-btn">
@@ -133,6 +156,8 @@ const closeChatPanel = () => { showChatPanel.value = false }
     bottom: 40px;
     z-index: 3000;
 }
+
+.retry-publish { position: fixed; right: 100px; bottom: 40px; z-index: 3000; }
 
 .floating-ai-btn .el-button {
     width: 48px;

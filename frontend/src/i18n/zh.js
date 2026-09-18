@@ -52,7 +52,16 @@ export default {
         reselect: '重新选择文件',
         unsupportedType: '只支持上传视频文件（MP4、MOV、AVI、MKV、WebM）或MP3音频文件',
         tooLarge: '文件大小不能超过 {size}MB',
-        remarksPlaceholder: '你可以添加备注在默认提示词的基础上实现更加个性化的输出, 例如: 输出更详细一些'
+        remarksPlaceholder: '你可以添加备注在默认提示词的基础上实现更加个性化的输出, 例如: 输出更详细一些',
+        processingMode: '转写来源',
+        audioMode: '仅音频',
+        audioVideoMode: '音频 + 视频',
+        audioVideoNotice: '将上传原始视频并消耗更多多模态额度，处理时间可能更长。',
+        keepSourceMedia: '保留源媒体',
+        publishOutput: '发布输出到 GitHub',
+        duration: '时长：',
+        mediaEstimate: '预计输入：{duration}，{size} MB。',
+        videoTooLarge: '音频 + 视频输入不能超过配置的 {size} MB 限制。'
     },
     styles: {
         note: '知识笔记',
@@ -175,6 +184,7 @@ export default {
         title: '设置',
         style: '内容风格',
         connectivity: '连通性',
+        providerUsage: '服务商用量',
         screenshot: '智能截图',
         password: '访问密码',
         other: '其他设置',

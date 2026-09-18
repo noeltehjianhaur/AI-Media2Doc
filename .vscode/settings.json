@@ -1,3 +1,7 @@
 {
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "python.defaultInterpreterPath": "C:\\Users\\NOEL TEH JIAN HAUR\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/backend"
+    ]
 }

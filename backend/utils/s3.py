@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 import env
 
@@ -59,3 +60,53 @@ def upload_bytes(file_name: str, data: bytes, content_type: str = "audio/mpeg"):
         ContentType=content_type,
     )
     return file_name
+
+
+def delete_object(file_name: str):
+    """Delete one temporary object from the configured storage bucket."""
+    get_s3_client().delete_object(Bucket=env.STORAGE_BUCKET, Key=file_name)
+
+
+def delete_objects_by_prefix(prefix: str):
+    """Delete every object under a task-owned prefix and return the delete count."""
+    client = get_s3_client()
+    paginator = client.get_paginator("list_objects_v2")
+    deleted = 0
+    for page in paginator.paginate(Bucket=env.STORAGE_BUCKET, Prefix=prefix):
+        objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+        if not objects:
+            continue
+        client.delete_objects(
+            Bucket=env.STORAGE_BUCKET,
+            Delete={"Objects": objects, "Quiet": True},
+        )
+        deleted += len(objects)
+    return deleted
+
+
+def configure_temporary_lifecycle(days: int = 1):
+    """Ensure task-owned temporary objects expire without replacing unrelated rules."""
+    client = get_s3_client()
+    try:
+        current = client.get_bucket_lifecycle_configuration(Bucket=env.STORAGE_BUCKET)
+        rules = current.get("Rules", [])
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code")
+        if code not in {"NoSuchLifecycleConfiguration", "NoSuchLifecycle"}:
+            raise
+        rules = []
+    rule_id = "ai-media2doc-temporary-cleanup"
+    rules = [rule for rule in rules if rule.get("ID") != rule_id]
+    rules.append(
+        {
+            "ID": rule_id,
+            "Status": "Enabled",
+            "Filter": {"Prefix": "temporary/"},
+            "Expiration": {"Days": days},
+            "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": days},
+        }
+    )
+    client.put_bucket_lifecycle_configuration(
+        Bucket=env.STORAGE_BUCKET,
+        LifecycleConfiguration={"Rules": rules},
+    )

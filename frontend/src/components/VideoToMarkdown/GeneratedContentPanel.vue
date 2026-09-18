@@ -51,6 +51,9 @@
             <template v-if="isContentMindMap">
                 <MindMapViewer :content="content" />
             </template>
+            <template v-else-if="isHtmlOutput">
+                <iframe class="html-record" :srcdoc="htmlPreviewContent" sandbox title="Generated HTML record" />
+            </template>
             <template v-else>
                 <div v-html="renderedContent" class="markdown-content" />
             </template>
@@ -63,8 +66,11 @@ import { ref, computed, nextTick, watch } from 'vue'
 import { ElButton } from 'element-plus'
 import { Download, List, Loading } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
+import JSZip from 'jszip'
 import { useI18n } from 'vue-i18n'
 import MindMapViewer from './MindMapViewer.vue'
+import { isHtmlRecord, outputDownloadName } from '../../utils/outputRecord'
 
 const { t } = useI18n()
 
@@ -76,6 +82,22 @@ const props = defineProps({
     taskId: {
         type: [String, Number],
         required: true
+    },
+    outputContent: {
+        type: String,
+        default: ''
+    },
+    outputFormat: {
+        type: String,
+        default: 'markdown'
+    },
+    outputPath: {
+        type: String,
+        default: ''
+    },
+    outputFiles: {
+        type: Object,
+        default: () => ({})
     }
 })
 
@@ -134,6 +156,18 @@ const isJsonString = (str) => {
 
 // 判断内容是否应该显示为思维导图
 const isContentMindMap = computed(() => isJsonString(props.content))
+const isHtmlOutput = computed(() => isHtmlRecord(props.outputFormat, props.outputContent))
+const htmlPreviewContent = computed(() => {
+    let preview = props.outputContent
+    const outputDirectory = props.outputPath.split('/').slice(0, -1).join('/')
+    for (const [path, value] of Object.entries(props.outputFiles)) {
+        if (!path.startsWith(`${outputDirectory}/images/`) || typeof value !== 'object') continue
+        const relativePath = path.slice(outputDirectory.length + 1)
+        const extension = path.toLowerCase().endsWith('.png') ? 'png' : 'jpeg'
+        preview = preview.replaceAll(`src="${relativePath}"`, `src="data:image/${extension};base64,${value.content}"`)
+    }
+    return preview
+})
 
 // 获取内容类型标题
 const getContentTypeTitle = () => {
@@ -144,7 +178,7 @@ const getContentTypeTitle = () => {
 // 渲染后的内容
 const renderedContent = computed(() => {
     // 通过 env 传入 taskId，确保渲染时标题带唯一 id
-    return md.render(props.content, { taskId: props.taskId })
+    return DOMPurify.sanitize(md.render(props.content, { taskId: props.taskId }))
 })
 
 // 大纲相关状态
@@ -198,9 +232,29 @@ const scrollToHeading = (item) => {
 }
 
 // 下载内容
-const downloadContent = () => {
+const downloadContent = async () => {
     let filename, type
-    if (isContentMindMap.value) {
+    let downloadValue = props.content
+    if (isHtmlOutput.value) {
+        const zip = new JSZip()
+        for (const [path, value] of Object.entries(props.outputFiles)) {
+            const relativePath = path.includes('/records/') ? path.split('/records/').pop() : path
+            if (typeof value === 'object' && value.encoding === 'base64') {
+                zip.file(relativePath, value.content, { base64: true })
+            } else {
+                zip.file(relativePath, String(value))
+            }
+        }
+        const blob = await zip.generateAsync({ type: 'blob' })
+        const baseName = outputDownloadName(props.outputPath, props.taskId, 'html').replace(/\.html$/, '')
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = `${baseName}.zip`
+        anchor.click()
+        URL.revokeObjectURL(url)
+        return
+    } else if (isContentMindMap.value) {
         filename = `mindmap_${props.taskId}.json`
         type = 'application/json'
     } else {
@@ -208,7 +262,7 @@ const downloadContent = () => {
         type = 'text/markdown'
     }
 
-    const blob = new Blob([props.content], { type })
+    const blob = new Blob([downloadValue], { type })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -230,6 +284,13 @@ const downloadContent = () => {
     flex-direction: column;
     padding: 0;
     border: none;
+}
+
+.html-record {
+    width: 100%;
+    min-height: 100%;
+    border: 0;
+    background: #fff;
 }
 
 .section-header {

@@ -23,6 +23,15 @@ export GEMINI_API_KEY=xxxx
 export OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 export OPENROUTER_MODEL_ID=openai/gpt-4o-mini
 export OPENROUTER_API_KEY=xxxx
+export OPENROUTER_MANAGEMENT_KEY=xxxx
+
+# 可选：按用途配置允许使用的模型（逗号分隔）
+export GEMINI_ASR_MODELS=your-audio-model
+export GEMINI_VIDEO_MODELS=your-video-model
+export GEMINI_TEXT_MODELS=your-text-model
+export OPENROUTER_ASR_MODELS=your-openrouter-audio-model
+export OPENROUTER_TEXT_MODELS=openai/gpt-4o-mini
+export MAX_CONCURRENT_MODEL_REQUESTS=2
 
 # S3 兼容对象存储(例如 Cloudflare R2)
 export STORAGE_ACCESS_KEY=xxxx
@@ -30,6 +39,19 @@ export STORAGE_SECRET_KEY=xxxx
 export STORAGE_ENDPOINT=xxxx
 export STORAGE_REGION=auto
 export STORAGE_BUCKET=xxxx
+
+# 可选：实时用量/配额查询（只读凭据）
+export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_CLOUD_ACCESS_TOKEN=xxxx
+export CLOUDFLARE_ACCOUNT_ID=your-account-id
+export CLOUDFLARE_ANALYTICS_TOKEN=xxxx
+export PROVIDER_USAGE_CACHE_SECONDS=60
+
+# 可选：输出到 GitHub，默认关闭
+export GITHUB_OUTPUT_ENABLED=false
+export GITHUB_OUTPUT_REPOSITORY=noeltehjianhaur/AI-Media2Doc-Output
+export GITHUB_OUTPUT_BRANCH=main
+export GITHUB_OUTPUT_TOKEN=xxxx
 
 export WEB_ACCESS_PASSWORD=xxx
 ```

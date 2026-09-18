@@ -6,6 +6,8 @@ import * as healthService from './healthService'
 import * as secretsService from './secretsService' // 新增
 import * as linkService from './linkService'
 import * as translationService from './translationService'
+import * as providerUsageService from './providerUsageService'
+import * as outputRecordService from './outputRecordService'
 import httpService from './http'
 
 // 从各个服务中导出常用函数
@@ -17,6 +19,8 @@ export const { checkHealth } = healthService
 export const { getSecrets } = secretsService // 新增
 export const { submitLinkTask } = linkService
 export const { translateText, getTargetLanguage, setTargetLanguage, TARGET_LANGUAGES } = translationService
+export const { refreshProviderUsage } = providerUsageService
+export const { createOutputRecord } = outputRecordService
 
 // 导出所有服务
 export {
@@ -28,6 +32,8 @@ export {
   secretsService, // 新增
   linkService,
   translationService,
+  providerUsageService,
+  outputRecordService,
   httpService
 }
 

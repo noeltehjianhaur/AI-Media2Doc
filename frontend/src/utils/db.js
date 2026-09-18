@@ -1,7 +1,7 @@
 import { openDB, deleteDB } from 'idb'
 
 const dbName = 'videoTasksDB'
-const dbVersion = 1
+const dbVersion = 2
 
 let dbInstance = null
 
@@ -10,14 +10,30 @@ export async function initDB() {
 
   try {
     dbInstance = await openDB(dbName, dbVersion, {
-      upgrade(db) {
-        // 创建基本数据存储
-        const taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true })
-        taskStore.createIndex('md5', 'md5', { unique: false }) // 非唯一，允许同一MD5有多个不同风格
-        taskStore.createIndex('createdAt', 'createdAt', { unique: false })
-        taskStore.createIndex('fileName', 'fileName', { unique: false })
-        taskStore.createIndex('contentStyle', 'contentStyle', { unique: false })
-        taskStore.createIndex('md5_contentStyle', ['md5', 'contentStyle'], { unique: true })
+      async upgrade(db, oldVersion, _newVersion, transaction) {
+        let taskStore
+        if (oldVersion < 1) {
+          taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true })
+          taskStore.createIndex('md5', 'md5', { unique: false })
+          taskStore.createIndex('createdAt', 'createdAt', { unique: false })
+          taskStore.createIndex('fileName', 'fileName', { unique: false })
+          taskStore.createIndex('contentStyle', 'contentStyle', { unique: false })
+        } else {
+          taskStore = transaction.objectStore('tasks')
+        }
+        if (oldVersion < 2) {
+          if (taskStore.indexNames.contains('md5_contentStyle')) taskStore.deleteIndex('md5_contentStyle')
+          taskStore.createIndex('md5_style_mode', ['md5', 'contentStyle', 'processingMode'], { unique: true })
+          let cursor = await taskStore.openCursor()
+          while (cursor) {
+            const task = cursor.value
+            if (!task.processingMode) {
+              task.processingMode = 'audio'
+              await cursor.update(task)
+            }
+            cursor = await cursor.continue()
+          }
+        }
       }
     })
     return dbInstance
@@ -62,6 +78,7 @@ export async function saveTask(taskData) {
       ...taskData,
       createdAt: new Date().toISOString(),
       contentStyle: taskData.contentStyle,
+      processingMode: taskData.processingMode || 'audio',
       transcriptionText: serializeTranscriptionText(taskData.transcriptionText)
     }
     const taskId = await db.add('tasks', taskToSave)
@@ -74,6 +91,17 @@ export async function saveTask(taskData) {
     console.error('保存任务失败:', error)
     throw error
   }
+}
+
+export async function updateTask(taskData) {
+  const db = await initDB()
+  const taskToSave = {
+    ...taskData,
+    processingMode: taskData.processingMode || 'audio',
+    transcriptionText: serializeTranscriptionText(taskData.transcriptionText)
+  }
+  await db.put('tasks', taskToSave)
+  return taskData.id
 }
 
 // 新增：清理旧任务，只保留最新的最大数量记录（取用户设置，默认10）
@@ -108,6 +136,7 @@ async function cleanupOldTasks(db) {
 function deserializeTasks(tasks) {
   return tasks.map(task => ({
     ...task,
+    processingMode: task.processingMode || 'audio',
     transcriptionText: deserializeTranscriptionText(task.transcriptionText)
   }))
 }
@@ -129,17 +158,17 @@ export async function getTaskByMd5(md5) {
 }
 
 
-export async function checkTaskExistsByMd5AndStyle(md5, contentStyle) {
+export async function checkTaskExistsByMd5AndStyle(md5, contentStyle, processingMode = 'audio') {
   try {
     const db = await initDB()
     // 尝试使用组合索引查询
     try {
-      const task = await db.getFromIndex('tasks', 'md5_contentStyle', [md5, contentStyle])
+      const task = await db.getFromIndex('tasks', 'md5_style_mode', [md5, contentStyle, processingMode])
       return !!task // 有结果返回true，否则返回false
     } catch (e) {
       console.warn('组合索引查询失败，回退到手动筛选:', e)
       const tasks = await db.getAllFromIndex('tasks', 'md5', md5)
-      return tasks.some(task => task.contentStyle === contentStyle)
+      return tasks.some(task => task.contentStyle === contentStyle && (task.processingMode || 'audio') === processingMode)
     }
   } catch (error) {
     console.error('检查任务失败:', error)
@@ -190,7 +219,7 @@ export async function resetDatabase() {
         taskStore.createIndex('createdAt', 'createdAt', { unique: false })
         taskStore.createIndex('fileName', 'fileName', { unique: false })
         taskStore.createIndex('contentStyle', 'contentStyle', { unique: false })
-        taskStore.createIndex('md5_contentStyle', ['md5', 'contentStyle'], { unique: true })
+        taskStore.createIndex('md5_style_mode', ['md5', 'contentStyle', 'processingMode'], { unique: true })
 
         console.log('数据库已重建');
       }

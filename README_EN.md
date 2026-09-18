@@ -72,6 +72,15 @@ GEMINI_API_KEY=your-gemini-api-key
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_MODEL_ID=openai/gpt-4o-mini
 OPENROUTER_API_KEY=your-openrouter-api-key
+OPENROUTER_MANAGEMENT_KEY=your-read-only-management-key
+
+# Optional role-specific model allow-lists (comma-separated)
+GEMINI_ASR_MODELS=your-audio-capable-model
+GEMINI_VIDEO_MODELS=your-video-capable-model
+GEMINI_TEXT_MODELS=your-text-capable-model
+OPENROUTER_ASR_MODELS=your-audio-capable-model
+OPENROUTER_TEXT_MODELS=openai/gpt-4o-mini
+MAX_CONCURRENT_MODEL_REQUESTS=2
 
 # S3-compatible object storage (e.g. Cloudflare R2)
 STORAGE_ACCESS_KEY=your-access-key
@@ -79,6 +88,19 @@ STORAGE_SECRET_KEY=your-secret-key
 STORAGE_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 STORAGE_REGION=auto
 STORAGE_BUCKET=your-bucket
+
+# Optional live quota/usage telemetry
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_ACCESS_TOKEN=your-read-only-access-token
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_ANALYTICS_TOKEN=your-read-only-analytics-token
+PROVIDER_USAGE_CACHE_SECONDS=60
+
+# Optional atomic output publication (disabled by default)
+GITHUB_OUTPUT_ENABLED=false
+GITHUB_OUTPUT_REPOSITORY=noeltehjianhaur/AI-Media2Doc-Output
+GITHUB_OUTPUT_BRANCH=main
+GITHUB_OUTPUT_TOKEN=your-fine-grained-contents-token
 ```
 
 Setup steps:

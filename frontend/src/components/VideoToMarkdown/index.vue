@@ -5,14 +5,15 @@ import { useI18n } from 'vue-i18n'
 import UploadSection from './UploadSection.vue'
 import LoadingOverlay from './LoadingOverlay.vue'
 import { loadFFmpeg, extractAudio, captureVideoFrame, frameToBase64, cleanupVideoCache } from '../../utils/ffmpeg'
-import { submitAsrTask, pollAsrTask } from '../../apis/asrService'
-import { generateMarkdownText } from '../../apis/markdownService'
+import { submitAsrTask, pollAsrTaskDetails } from '../../apis/asrService'
+import { generateMarkdownResult } from '../../apis/markdownService'
 import { submitLinkTask } from '../../apis/linkService'
 import { translateText, getTargetLanguage } from '../../apis/translationService'
 import { calculateMD5 } from '../../utils/md5'
 import { getAudioUploadUrl, uploadFile } from '../../apis'
 import { saveTask, checkTaskExistsByMd5AndStyle, getAnyTaskByMd5, getTaskByID } from '../../utils/db'
 import { eventBus } from '../../utils/eventBus'
+import { createOutputRecord } from '../../apis/outputRecordService'
 
 const stepDefs = [
   { titleKey: 'steps.initFfmpeg', icon: 'Promotion', status: 'wait' },
@@ -49,6 +50,12 @@ const audioExtracted = ref(false)
 const textTranscribed = ref(false)
 const transcriptionText = ref('')
 const markdownContent = ref('')
+const processingMode = ref('audio')
+const keepSourceMedia = ref(false)
+const publishOutput = ref(false)
+const visualAnalysis = ref(null)
+const providerUsage = ref({})
+const capturedScreenshots = ref([])
 
 const fileMd5 = ref('')
 const fileSize = ref(0)
@@ -77,6 +84,10 @@ const resetAll = () => {
   textTranscribed.value = false
   transcriptionText.value = ''
   markdownContent.value = ''
+  processingMode.value = 'audio'
+  visualAnalysis.value = null
+  providerUsage.value = {}
+  capturedScreenshots.value = []
 }
 
 const handleFileSelected = async (f) => {
@@ -88,6 +99,7 @@ const handleFileSelected = async (f) => {
   // 计算MD5
   fileMd5.value = await calculateMD5(new Uint8Array(await f.arrayBuffer()))
   md5Calculating.value = false
+  if (isMP3File(f)) processingMode.value = 'audio'
   showStyleSelector.value = true
 }
 
@@ -109,12 +121,25 @@ const handleStyleSelected = (val) => {
   showStartButton.value = true
 }
 
+const handleProcessingModeChange = (value) => {
+  if (value === 'audio_video' && isMP3File(file.value)) {
+    processingMode.value = 'audio'
+    return
+  }
+  processingMode.value = value
+}
+
 const updateStepStatus = (idx, status) => {
   steps.value[idx].status = status
   activeStep.value = idx
 }
 
 const isMP3File = (f) => f && (f.type === 'audio/mpeg' || f.name.toLowerCase().endsWith('.mp3'))
+
+const getVideoApiMaxSize = () => {
+  const configured = Number.parseInt(localStorage.getItem('videoApiMaxSizeMB') || '200', 10)
+  return Number.isFinite(configured) ? configured : 200
+}
 
 // 转写结果默认保留原始语言，仅在用户选择目标语言时翻译
 const applyTargetLanguage = async (segments) => {
@@ -138,38 +163,51 @@ const applyTargetLanguage = async (segments) => {
 
 const startProcessing = async () => {
   if (!file.value || !style.value) return
+  if (processingMode.value === 'audio_video' && file.value.size > getVideoApiMaxSize() * 1024 * 1024) {
+    ElMessage.error(t('upload.videoTooLarge', { size: getVideoApiMaxSize() }))
+    return
+  }
   isProcessing.value = true
   steps.value = stepDefs.map(s => ({ ...s }))
   try {
-    // 0. 初始化FFmpeg
-    updateStepStatus(0, 'processing')
-    ffmpegLoading.value = true
-    await loadFFmpeg()
-    ffmpegLoaded.value = true
-    updateStepStatus(0, 'success')
-    ffmpegLoading.value = false
+    let sourceData
+    let sourceMd5
+    let sourceFilename
+    if (processingMode.value === 'audio') {
+      updateStepStatus(0, 'processing')
+      ffmpegLoading.value = true
+      await loadFFmpeg()
+      ffmpegLoaded.value = true
+      updateStepStatus(0, 'success')
+      ffmpegLoading.value = false
 
-    // 1. 提取音频
-    updateStepStatus(1, 'processing')
-    let audioBuf
-    if (isMP3File(file.value)) {
-      audioBuf = new Uint8Array(await file.value.arrayBuffer())
-      ElMessage.success(t('process.mp3Detected'))
+      updateStepStatus(1, 'processing')
+      if (isMP3File(file.value)) {
+        sourceData = new Uint8Array(await file.value.arrayBuffer())
+        ElMessage.success(t('process.mp3Detected'))
+      } else {
+        sourceData = await extractAudio(new Uint8Array(await file.value.arrayBuffer()))
+      }
+      sourceMd5 = await calculateMD5(sourceData)
+      sourceFilename = `temporary/${crypto.randomUUID()}/source.mp3`
     } else {
-      audioBuf = await extractAudio(new Uint8Array(await file.value.arrayBuffer()))
+      updateStepStatus(0, 'success')
+      updateStepStatus(1, 'success')
+      sourceData = file.value
+      sourceMd5 = fileMd5.value || await calculateMD5(new Uint8Array(await file.value.arrayBuffer()))
+      const extension = file.value.name.includes('.') ? file.value.name.split('.').pop().toLowerCase() : 'mp4'
+      sourceFilename = `temporary/${crypto.randomUUID()}/source.${extension}`
     }
     audioExtracted.value = true
     updateStepStatus(1, 'success')
 
-    // 2. 检查MD5和历史
-    const audioMd5 = await calculateMD5(audioBuf)
-    audioFilename.value = `${audioMd5}.mp3`
-    const exists = await checkTaskExistsByMd5AndStyle(audioMd5, style.value)
+    audioFilename.value = sourceFilename
+    const exists = await checkTaskExistsByMd5AndStyle(sourceMd5, style.value, processingMode.value)
     if (exists) {
-      const existingTask = await getAnyTaskByMd5(audioMd5)
+      const existingTask = await getAnyTaskByMd5(sourceMd5)
       isProcessing.value = false
       showStartButton.value = false
-      if (existingTask && existingTask.contentStyle === style.value && existingTask.markdownContent) {
+      if (existingTask && existingTask.contentStyle === style.value && (existingTask.processingMode || 'audio') === processingMode.value && existingTask.markdownContent) {
         ElMessage.info(t('process.alreadyProcessed'))
         eventBus.emit('view-task', existingTask)
       } else {
@@ -178,55 +216,91 @@ const startProcessing = async () => {
       return
     }
 
-    // 4. 识别
     updateStepStatus(3, 'processing')
-    const existingTask = await getAnyTaskByMd5(audioMd5)
-    if (existingTask && existingTask.transcriptionText) {
+    const existingTask = await getAnyTaskByMd5(sourceMd5)
+    if (existingTask && (existingTask.processingMode || 'audio') === processingMode.value && existingTask.transcriptionText) {
       transcriptionText.value = existingTask.transcriptionText
+      visualAnalysis.value = existingTask.visualAnalysis || null
+      providerUsage.value = existingTask.usage || {}
       textTranscribed.value = true
       updateStepStatus(3, 'success')
     } else {
-      // 全新的任务才需要上传和识别
       updateStepStatus(2, 'processing')
       const uploadUrl = await getAudioUploadUrl(audioFilename.value)
-      await uploadFile(uploadUrl, new Blob([audioBuf], { type: 'audio/mpeg' }))
+      const uploadBody = sourceData instanceof Blob ? sourceData : new Blob([sourceData], { type: 'audio/mpeg' })
+      await uploadFile(uploadUrl, uploadBody)
       updateStepStatus(2, 'success')
 
       updateStepStatus(3, 'processing')
-      const taskId = await submitAsrTask(audioFilename.value)
-      const text = await pollAsrTask(taskId)
-      transcriptionText.value = await applyTargetLanguage(text)
+      const taskId = await submitAsrTask(audioFilename.value, processingMode.value, fileName.value, keepSourceMedia.value)
+      const result = await pollAsrTaskDetails(taskId)
+      transcriptionText.value = await applyTargetLanguage(result.result)
+      visualAnalysis.value = result.visual_analysis || null
+      providerUsage.value = result.usage || {}
       textTranscribed.value = true
       updateStepStatus(3, 'success')
+      eventBus.emit('transcription-completed')
     }
 
-    // 5. 生成内容
     updateStepStatus(4, 'processing')
-    // 处理转录文本，支持字幕格式
     const processedText = formatTranscript(transcriptionText.value)
-    const md = await generateMarkdownText(processedText, style.value, remarks.value, llmTimeout.value, llmMaxTokens.value)
-    // 提取所有时间戳标记 #image[20] 格式（整数秒数）
+    const generation = await generateMarkdownResult(processedText, style.value, remarks.value, llmTimeout.value, llmMaxTokens.value)
+    const md = generation.content
+    providerUsage.value = { transcription: providerUsage.value, generation: { model: generation.model, ...generation.usage } }
     const imageTimeRegex = /#image\[(\d+)\]/g
-    const imageTimeMarkers = md.match(imageTimeRegex) || []
-    console.log('提取到的时间戳标记:', imageTimeMarkers)
-    // 新逻辑：根据开关处理截图
-    markdownContent.value = await processImageMarkers(md, file.value, imageTimeMarkers)
+    let contentWithMarkers = md
+    let imageTimeMarkers = md.match(imageTimeRegex) || []
+    if (processingMode.value === 'audio_video' && imageTimeMarkers.length === 0) {
+      const visualSegments = visualAnalysis.value?.segments || []
+      const selectedSegments = visualSegments.some(segment => segment.important)
+        ? visualSegments.filter(segment => segment.important)
+        : visualSegments.filter(segment => segment.start_time >= 0)
+      imageTimeMarkers = selectedSegments
+        .slice(0, 8)
+        .map(segment => `#image[${Math.floor(segment.start_time / 1000)}]`)
+      if (imageTimeMarkers.length) contentWithMarkers += `\n\n${imageTimeMarkers.join('\n')}`
+    }
+    markdownContent.value = await processImageMarkers(contentWithMarkers, file.value, imageTimeMarkers)
     cleanupVideoCache()
     updateStepStatus(4, 'success')
 
-    // 保存
+    const outputRecord = await createOutputRecord({
+      processingMode: processingMode.value,
+      transcript: transcriptionText.value,
+      generatedContent: markdownContent.value,
+      visualAnalysis: visualAnalysis.value,
+      screenshots: capturedScreenshots.value,
+      publish: publishOutput.value,
+      metadata: {
+        source_type: 'upload',
+        original_name: fileName.value,
+        detected_language: visualAnalysis.value?.detected_language,
+        target_language: getTargetLanguage(),
+        content_style: style.value,
+        model: providerUsage.value?.transcription?.model || providerUsage.value?.generation?.model,
+        usage: providerUsage.value
+      }
+    })
+
     const task = {
       fileName: fileName.value,
-      md5: audioMd5,
+      md5: sourceMd5,
       transcriptionText: transcriptionText.value,
-      markdownContent: markdownContent.value, // 使用处理后的markdown内容
+      markdownContent: markdownContent.value,
       contentStyle: style.value,
+      processingMode: processingMode.value,
+      outputFormat: processingMode.value === 'audio_video' ? 'html' : 'markdown',
+      outputPath: outputRecord.output_path,
+      outputContent: outputRecord.files[outputRecord.output_path],
+      outputFiles: outputRecord.files,
+      visualAnalysis: visualAnalysis.value,
+      usage: providerUsage.value,
+      publication: outputRecord.publication,
       createdAt: new Date().toISOString()
     }
     const taskId = await saveTask(task)
     eventBus.emit('task-updated')
     ElMessage.success(t('process.completed'))
-    // 用 taskId 查询完整任务对象并跳转
     const savedTask = await getTaskByID(taskId)
     if (savedTask) {
       eventBus.emit('view-task', savedTask)
@@ -253,7 +327,8 @@ function formatTranscript(segments) {
       const startTotalSec = Math.floor(seg.start_time / 1000)
       const endTotalSec = Math.floor(seg.end_time / 1000)
 
-      return `[${startTime} - ${endTime} 时间范围秒数:(${startTotalSec}s-${endTotalSec}s)] ${seg.text}`
+      const visualContext = [seg.on_screen_text, ...(seg.visual_actions || [])].filter(Boolean).join('; ')
+      return `[${startTime} - ${endTime} 时间范围秒数:(${startTotalSec}s-${endTotalSec}s)] ${seg.text}${visualContext ? `\nVisual context: ${visualContext}` : ''}`
     }).join('\n')
   }
   return segments
@@ -277,24 +352,46 @@ const startLinkProcessing = async () => {
 
     updateStepStatus(2, 'processing')
     updateStepStatus(3, 'processing')
-    const { task_id: taskId } = await submitLinkTask(linkUrl.value)
+    const { task_id: taskId } = await submitLinkTask(linkUrl.value, processingMode.value, keepSourceMedia.value)
     updateStepStatus(2, 'success')
-    const text = await pollAsrTask(taskId)
-    transcriptionText.value = await applyTargetLanguage(text)
+    const result = await pollAsrTaskDetails(taskId)
+    transcriptionText.value = await applyTargetLanguage(result.result)
+    visualAnalysis.value = result.visual_analysis || null
+    providerUsage.value = result.usage || {}
     textTranscribed.value = true
     updateStepStatus(3, 'success')
+    eventBus.emit('transcription-completed')
 
     updateStepStatus(4, 'processing')
-    const md = await generateMarkdownText(
+    const generation = await generateMarkdownResult(
       formatTranscript(transcriptionText.value),
       style.value,
       remarks.value,
       llmTimeout.value,
       llmMaxTokens.value
     )
+    const md = generation.content
+    providerUsage.value = { transcription: providerUsage.value, generation: { model: generation.model, ...generation.usage } }
     // 链接模式没有本地视频文件，移除截图标记
     markdownContent.value = md.replace(/#image\[\d+\]/g, '')
     updateStepStatus(4, 'success')
+
+    const outputRecord = await createOutputRecord({
+      processingMode: processingMode.value,
+      transcript: transcriptionText.value,
+      generatedContent: markdownContent.value,
+      visualAnalysis: visualAnalysis.value,
+      publish: publishOutput.value,
+      metadata: {
+        source_type: 'link',
+        source_url: linkUrl.value,
+        detected_language: visualAnalysis.value?.detected_language,
+        target_language: getTargetLanguage(),
+        content_style: style.value,
+        model: providerUsage.value?.transcription?.model || providerUsage.value?.generation?.model,
+        usage: providerUsage.value
+      }
+    })
 
     const task = {
       fileName: linkUrl.value,
@@ -302,6 +399,15 @@ const startLinkProcessing = async () => {
       transcriptionText: transcriptionText.value,
       markdownContent: markdownContent.value,
       contentStyle: style.value,
+      processingMode: processingMode.value,
+      outputFormat: processingMode.value === 'audio_video' ? 'html' : 'markdown',
+      outputPath: outputRecord.output_path,
+      outputContent: outputRecord.files[outputRecord.output_path],
+      outputFiles: outputRecord.files,
+      visualAnalysis: visualAnalysis.value,
+      usage: providerUsage.value,
+      sourceUrl: linkUrl.value,
+      publication: outputRecord.publication,
       createdAt: new Date().toISOString()
     }
     const savedId = await saveTask(task)
@@ -345,6 +451,7 @@ async function processImageMarkers(md, file, imageTimeMarkers) {
     md = md.replace(/^```/, '').replace(/```$/, '').trim()
   }
   smartScreenshot.value = isSmartScreenshotEnabled()
+  capturedScreenshots.value = []
   imageCount.value = 0
   imageTotal.value = imageTimeMarkers.length
   if (!smartScreenshot.value) {
@@ -372,6 +479,7 @@ async function processImageMarkers(md, file, imageTimeMarkers) {
           // 捕获视频帧
           const frameData = await captureVideoFrame(videoData, totalSeconds)
           const base64Image = frameToBase64(frameData)
+          capturedScreenshots.value.push({ timestamp: totalSeconds, data_url: base64Image })
           // 使用 HTML img 标签并加编号，设置最大宽度自适应
           const imageTag = `<div style="text-align:center;"><span style="font-size:0.98em;color:#888;">截图${imageIdx}</span><br><img src="${base64Image}" alt="截图${imageIdx}" style="max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 8px #0001;margin:8px 0;" /></div><p></p>`
           result = result.replace(marker, imageTag)
@@ -422,6 +530,10 @@ const stepText = computed(() => {
           :file-size="fileSize" :file-md5="fileMd5" :md5-calculating="md5Calculating" :style="style"
           :link-url="linkUrl" @file-selected="handleFileSelected" @link-submitted="handleLinkSubmitted"
           @update:style="handleStyleSelected" @start-process="handleStartProcess"
+          :processing-mode="processingMode" :keep-source-media="keepSourceMedia" :publish-output="publishOutput"
+          @update:processing-mode="handleProcessingModeChange"
+          @update:keep-source-media="value => keepSourceMedia = value"
+          @update:publish-output="value => publishOutput = value"
           :remarks="remarks" @update:remarks="handleRemarksUpdate" @reset="resetAll"
           @update:timeout="handleLLMTimeoutChange" @update:max-tokens="handleLLMMaxTokensChange" />
       </div>

@@ -32,7 +32,7 @@ function renderPrompt(style: string, text: string): string {
  * @param contentStyle 内容风格
  * @returns 生成的Markdown内容
  */
-export const generateMarkdownText = async (text: string, contentStyle: string, remarks: string, timeout: number, maxTokens: number): Promise<string> => {
+export const generateMarkdownResult = async (text: string, contentStyle: string, remarks: string, timeout: number, maxTokens: number): Promise<{ content: string; model: string; usage: Record<string, any> | null }> => {
 
 
   try {
@@ -82,10 +82,19 @@ export const generateMarkdownText = async (text: string, contentStyle: string, r
       throw new Error('无效的响应格式')
     }
 
-    return response.data.choices[0].message.content
+    return {
+      content: response.data.choices[0].message.content,
+      model: response.data.model,
+      usage: response.data.usage
+    }
   } catch (error) {
     console.error('生成Markdown失败:', error)
     throw error
   }
+}
+
+export const generateMarkdownText = async (text: string, contentStyle: string, remarks: string, timeout: number, maxTokens: number): Promise<string> => {
+  const result = await generateMarkdownResult(text, contentStyle, remarks, timeout, maxTokens)
+  return result.content
 }
 

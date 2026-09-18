@@ -1,16 +1,17 @@
 # -*- coding: UTF-8 -*-
 import os
+import glob
 import tempfile
-import uuid
 from urllib.parse import urlparse, urlunparse
 
 from fastapi import APIRouter, BackgroundTasks
 
-from models import VideoLinkRequest
+from models import ProcessingMode, VideoLinkRequest
 from core.exceptions import BusinessException, ExternalServiceException
 from core.response import success_response, APIResponse
 from config.log import get_logger
-from routers.audio import create_transcription_record, run_transcription_task
+import env
+from routers.audio import ASR_TASKS, create_transcription_record, run_transcription_task
 from utils.s3 import upload_bytes
 
 router = APIRouter(prefix="/link", tags=["Link"])
@@ -30,8 +31,13 @@ def normalize_video_url(url: str) -> str:
     return url
 
 
-def download_audio(url: str) -> bytes:
-    """Extract the audio track of a remote video link as MP3 bytes."""
+def is_youtube_url(url: str) -> bool:
+    host = urlparse(url).netloc.lower().split(":")[0]
+    return host in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}
+
+
+def _download_with_ytdlp(url: str, processing_mode: ProcessingMode) -> bytes:
+    """Download audio or merged video bytes with yt-dlp."""
     try:
         import yt_dlp
     except ImportError:
@@ -44,9 +50,12 @@ def download_audio(url: str) -> bytes:
         logger.info("Normalized Rednote URL for XiaoHongShu extraction")
 
     with tempfile.TemporaryDirectory() as workdir:
-        outtmpl = os.path.join(workdir, "audio.%(ext)s")
+        stem = "audio" if processing_mode == ProcessingMode.AUDIO else "video"
+        outtmpl = os.path.join(workdir, f"{stem}.%(ext)s")
         options = {
-            "format": "bestaudio/best",
+            "format": "bestaudio/best"
+            if processing_mode == ProcessingMode.AUDIO
+            else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": outtmpl,
             "quiet": True,
             "noplaylist": True,
@@ -61,7 +70,9 @@ def download_audio(url: str) -> bytes:
                     "preferredcodec": "mp3",
                     "preferredquality": "128",
                 }
-            ],
+            ] if processing_mode == ProcessingMode.AUDIO else [],
+            "merge_output_format": "mp4",
+            "max_filesize": env.MAX_VIDEO_SIZE_MB * 1024 * 1024,
         }
 
         try:
@@ -73,14 +84,42 @@ def download_audio(url: str) -> bytes:
                 f"Unable to download media from this link: {error}",
             )
 
-        mp3_path = os.path.join(workdir, "audio.mp3")
-        if not os.path.exists(mp3_path):
+        candidates = glob.glob(os.path.join(workdir, f"{stem}.*"))
+        media_path = next((path for path in candidates if not path.endswith((".part", ".ytdl"))), None)
+        if not media_path:
             raise ExternalServiceException(
-                "Link download", "No audio track could be extracted from this link"
+                "Link download", "No compatible media could be extracted from this link"
             )
 
-        with open(mp3_path, "rb") as handle:
+        with open(media_path, "rb") as handle:
             return handle.read()
+
+
+def download_media(url: str, processing_mode: ProcessingMode):
+    data = _download_with_ytdlp(url, processing_mode)
+    if processing_mode == ProcessingMode.AUDIO:
+        return data, "mp3", "audio/mpeg"
+    return data, "mp4", "video/mp4"
+
+
+def run_link_transcription_task(task_id: str, url: str):
+    """Acquire remote media in the background, then use the shared transcription worker."""
+    task = ASR_TASKS[task_id]
+    try:
+        mode = ProcessingMode(task["processing_mode"])
+        if mode == ProcessingMode.AUDIO_VIDEO and is_youtube_url(url):
+            run_transcription_task(task_id, None)
+            return
+
+        media, extension, content_type = download_media(url, mode)
+        filename = f"temporary/{task_id}/source.{extension}"
+        upload_bytes(filename, media, content_type)
+        task["filename"] = filename
+        run_transcription_task(task_id, filename)
+    except Exception as error:
+        logger.error(f"Link transcription task {task_id} failed: {error}")
+        task["status"] = "failed"
+        task["error"] = str(error)
 
 
 @router.post("/transcription-tasks", response_model=APIResponse)
@@ -98,15 +137,18 @@ async def create_link_transcription_task(
     logger.info(f"Creating link transcription task for: {url}")
 
     try:
-        audio_bytes = download_audio(url)
-        filename = f"link-{uuid.uuid4()}.mp3"
-        upload_bytes(filename, audio_bytes, "audio/mpeg")
-
-        task_id = create_transcription_record(filename)
-        background_tasks.add_task(run_transcription_task, task_id, filename)
+        task_id = create_transcription_record(
+            "",
+            processing_mode=request.processing_mode,
+            source_type="link",
+            original_name=url,
+            source_url=url,
+            keep_source_media=request.keep_source_media,
+        )
+        background_tasks.add_task(run_link_transcription_task, task_id, url)
 
         return success_response(
-            data={"task_id": task_id, "filename": filename},
+            data={"task_id": task_id, "filename": None},
             message="Link transcription task created successfully",
         )
     except (BusinessException, ExternalServiceException):

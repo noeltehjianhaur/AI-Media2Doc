@@ -4,6 +4,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import VideoToMarkdown from './components/VideoToMarkdown/index.vue'
 import TaskDetail from './components/VideoToMarkdown/TaskDetail.vue'
 import { eventBus } from './utils/eventBus'
+import { refreshProviderUsage } from './apis/providerUsageService'
 
 const activeMenu = ref('new-task')
 const isChatOpen = ref(false)
@@ -13,6 +14,7 @@ const isTaskDetailOpen = ref(false)
 const currentTask = ref(null)
 
 const previousMenu = ref('new-task')
+const handleTranscriptionCompleted = () => refreshProviderUsage().catch(() => {})
 
 const handleMenuSelect = (key) => {
   if (key.startsWith('task-')) {
@@ -35,9 +37,12 @@ const handleViewTask = (task) => {
 
 onMounted(() => {
   eventBus.on('view-task', handleViewTask)
+  eventBus.on('transcription-completed', handleTranscriptionCompleted)
+  refreshProviderUsage().catch(() => {})
 })
 onBeforeUnmount(() => {
   eventBus.off('view-task', handleViewTask)
+  eventBus.off('transcription-completed', handleTranscriptionCompleted)
 })
 </script>
 
