@@ -77,6 +77,7 @@ export interface QueryASRTaskResponse {
   visual_analysis?: Record<string, any> | null;
   usage?: Record<string, any>;
   source_deleted?: boolean;
+  error?: string;
 }
 
 /**

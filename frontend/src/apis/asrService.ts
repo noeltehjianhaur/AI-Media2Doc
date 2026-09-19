@@ -78,7 +78,9 @@ export const pollAsrTaskDetails = async (
   for (let attempts = 0; attempts < actualMaxAttempts; attempts++) {
     const result = await queryAsrTask(taskId)
     if (result.status === 'finished') return result.details as QueryASRTaskResponse
-    if (result.status === 'failed') throw new Error('Transcription failed')
+    if (result.status === 'failed') {
+      throw new Error(result.details?.error || 'Transcription failed')
+    }
     await new Promise(resolve => setTimeout(resolve, interval))
   }
   throw new Error(`Transcription timed out after ${actualMaxAttempts} attempts`)

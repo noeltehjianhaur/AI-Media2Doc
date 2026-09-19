@@ -71,11 +71,21 @@ function deserializeTranscriptionText(val) {
   return val
 }
 
+function serializeForStorage(value) {
+  if (value === undefined) return null
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (error) {
+    console.error('任务数据无法序列化:', error)
+    throw new Error('Task data cannot be saved locally')
+  }
+}
+
 export async function saveTask(taskData) {
   try {
     const db = await initDB()
     const taskToSave = {
-      ...taskData,
+      ...serializeForStorage(taskData),
       createdAt: new Date().toISOString(),
       contentStyle: taskData.contentStyle,
       processingMode: taskData.processingMode || 'audio',
@@ -96,7 +106,7 @@ export async function saveTask(taskData) {
 export async function updateTask(taskData) {
   const db = await initDB()
   const taskToSave = {
-    ...taskData,
+    ...serializeForStorage(taskData),
     processingMode: taskData.processingMode || 'audio',
     transcriptionText: serializeTranscriptionText(taskData.transcriptionText)
   }

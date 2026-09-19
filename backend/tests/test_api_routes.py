@@ -34,6 +34,16 @@ class ApiRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(set(response.json()["data"]), {"gemini", "openrouter", "cloudflare"})
 
+    @patch("routers.provider_usage.provider_usage_service.refresh", new_callable=AsyncMock)
+    def test_repeated_manual_refresh_returns_cached_data(self, refresh):
+        refresh.return_value = {"gemini": {"status": "not_configured"}}
+        response = self.client.post("/api/v1/provider-usage/refresh")
+        repeated_response = self.client.post("/api/v1/provider-usage/refresh")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(repeated_response.status_code, 200)
+        self.assertEqual(repeated_response.json()["data"]["gemini"]["status"], "not_configured")
+
     def test_model_capabilities_route(self):
         response = self.client.get("/api/v1/provider-usage/models")
         self.assertEqual(response.status_code, 200)

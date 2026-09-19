@@ -70,7 +70,7 @@ import DOMPurify from 'dompurify'
 import JSZip from 'jszip'
 import { useI18n } from 'vue-i18n'
 import MindMapViewer from './MindMapViewer.vue'
-import { isHtmlRecord, outputDownloadName } from '../../utils/outputRecord'
+import { isHtmlRecord, outputDownloadName, prepareHtmlPreview } from '../../utils/outputRecord'
 
 const { t } = useI18n()
 
@@ -157,17 +157,9 @@ const isJsonString = (str) => {
 // 判断内容是否应该显示为思维导图
 const isContentMindMap = computed(() => isJsonString(props.content))
 const isHtmlOutput = computed(() => isHtmlRecord(props.outputFormat, props.outputContent))
-const htmlPreviewContent = computed(() => {
-    let preview = props.outputContent
-    const outputDirectory = props.outputPath.split('/').slice(0, -1).join('/')
-    for (const [path, value] of Object.entries(props.outputFiles)) {
-        if (!path.startsWith(`${outputDirectory}/images/`) || typeof value !== 'object') continue
-        const relativePath = path.slice(outputDirectory.length + 1)
-        const extension = path.toLowerCase().endsWith('.png') ? 'png' : 'jpeg'
-        preview = preview.replaceAll(`src="${relativePath}"`, `src="data:image/${extension};base64,${value.content}"`)
-    }
-    return preview
-})
+const htmlPreviewContent = computed(() =>
+    prepareHtmlPreview(props.outputContent, props.outputPath, props.outputFiles)
+)
 
 // 获取内容类型标题
 const getContentTypeTitle = () => {

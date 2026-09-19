@@ -36,6 +36,15 @@ class TranscriptionTaskTests(unittest.TestCase):
         self.assertEqual(audio.ASR_TASKS[task_id]["usage"]["provider"], "gemini")
         delete.assert_called_once_with(key)
 
+    def test_failed_task_response_includes_the_provider_error(self):
+        task_id = audio.create_transcription_record("temporary/task/source.mp3")
+        audio.ASR_TASKS[task_id]["status"] = "failed"
+        audio.ASR_TASKS[task_id]["error"] = "ASR: No spoken text was detected"
+
+        response = __import__("asyncio").run(audio.get_transcription_task(task_id))
+
+        self.assertEqual(response.data["error"], "ASR: No spoken text was detected")
+
 
 if __name__ == "__main__":
     unittest.main()

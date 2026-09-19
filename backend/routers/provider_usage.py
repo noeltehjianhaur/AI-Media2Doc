@@ -2,7 +2,6 @@ import time
 
 from fastapi import APIRouter
 
-from core.exceptions import BusinessException
 from core.response import APIResponse, success_response
 from services.provider_usage import provider_usage_service
 from services.model_routing import public_capability_manifest
@@ -23,7 +22,11 @@ async def refresh_provider_usage():
     global _last_manual_refresh
     now = time.monotonic()
     if now - _last_manual_refresh < _manual_refresh_interval:
-        raise BusinessException("Provider usage refresh is rate-limited; retry shortly")
+        data = await provider_usage_service.refresh(force=False)
+        return success_response(
+            data=data,
+            message="Provider usage was recently refreshed; showing cached values",
+        )
     _last_manual_refresh = now
     data = await provider_usage_service.refresh(force=True)
     return success_response(data=data, message="Provider usage refreshed")

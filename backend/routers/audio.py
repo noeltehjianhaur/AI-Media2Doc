@@ -241,7 +241,13 @@ async def get_transcription_task(task_id: str):
 
         if task["status"] == "failed":
             return success_response(
-                data={"status": AsrTaskStatus.FAILED.value, "result": None},
+                data={
+                    "status": AsrTaskStatus.FAILED.value,
+                    "lifecycle_status": task["status"],
+                    "processing_mode": task["processing_mode"],
+                    "result": None,
+                    "error": task["error"] or "Transcription failed",
+                },
                 message=task["error"] or "Transcription failed",
             )
 
