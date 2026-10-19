@@ -56,6 +56,19 @@ export GITHUB_OUTPUT_TOKEN=xxxx
 export WEB_ACCESS_PASSWORD=xxx
 ```
 
+### GitHub PAT 更新
+
+重新生成 fine-grained PAT 后，将新值写入 `variables.env` 的
+`GITHUB_OUTPUT_TOKEN`，并确保该 PAT 对输出仓库具有 **Contents: Read and write**
+权限。Docker 部署需要重新创建后端容器才能加载新环境变量：
+
+```bash
+docker compose up -d --no-deps --force-recreate backend
+```
+
+仅重启现有容器不会重新读取 `env_file`，无需重新构建前端。之前已完成但发布失败的
+记录，可在原浏览器的历史记录中点击 **Retry publication**，无需重新转写。
+
 环境变量说明:
 
 **GEMINI_API_KEY / GEMINI_MODEL_ID**【必填】: 在 [Google AI Studio](https://aistudio.google.com/) 创建 API Key, 并选择支持音频输入的模型。

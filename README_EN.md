@@ -110,6 +110,21 @@ Setup steps:
 3. Create an S3-compatible bucket (Cloudflare R2 works well) and add a CORS rule allowing `http://localhost:5173`.
 4. Run `docker compose up -d`, then open `http://localhost:5173`.
 
+### Rotating the GitHub publishing token
+
+After regenerating the fine-grained PAT, update `GITHUB_OUTPUT_TOKEN` in
+`variables.env`. Grant access to the output repository with **Contents: Read and
+write**, then reload the backend environment:
+
+```bash
+docker compose up -d --no-deps --force-recreate backend
+```
+
+Restarting an existing container does not reload `env_file` values. Recreate the
+backend after changing secrets; no frontend rebuild is required. For completed
+records whose publication failed, use **Retry publication** in the original
+browser's task history. The saved record does not need to be transcribed again.
+
 ### Features
 
 - **Multilingual transcription** – the spoken language is auto-detected and the transcript is produced in that same language.
